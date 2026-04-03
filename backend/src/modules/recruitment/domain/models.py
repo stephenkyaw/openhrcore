@@ -130,6 +130,43 @@ class ScreeningRecommendation(str, enum.Enum):
 # ---------------------------------------------------------------------------
 
 
+class Role(Base):
+    """Dynamic role definition — each tenant can create custom roles."""
+
+    __tablename__ = "roles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_role_tenant_name"),
+    )
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    permissions: Mapped[list[RolePermissionEntry]] = relationship(
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
+
+
+class RolePermissionEntry(Base):
+    """Individual permission assigned to a role."""
+
+    __tablename__ = "role_permissions"
+    __table_args__ = (
+        UniqueConstraint("role_id", "permission", name="uq_role_perm"),
+        Index("ix_role_permissions_role", "role_id"),
+    )
+
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    permission: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    role: Mapped[Role] = relationship(back_populates="permissions")
+
+
 class Tenant(Base):
     """Organisation tenant — the top-level isolation boundary."""
 

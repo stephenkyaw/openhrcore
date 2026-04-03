@@ -13,12 +13,14 @@ import {
   Bell,
   ChevronLeft,
   LogOut,
+  Shield,
 } from "lucide-react"
 
 interface NavItem {
   label: string
   href: string
   icon: React.ElementType
+  adminOnly?: boolean
 }
 
 const navItems: NavItem[] = [
@@ -26,14 +28,12 @@ const navItems: NavItem[] = [
   { label: "Jobs", href: "/jobs", icon: Briefcase },
   { label: "Candidates", href: "/candidates", icon: Users },
   { label: "Pipeline", href: "/pipeline", icon: Kanban },
+  { label: "Users", href: "/users", icon: Shield, adminOnly: true },
   { label: "Settings", href: "/settings", icon: Settings },
 ]
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin",
-  recruiter: "Recruiter",
-  hiring_manager: "Hiring Manager",
-  viewer: "Viewer",
+function roleLabel(name: string): string {
+  return name.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
 interface AppLayoutProps {
@@ -103,7 +103,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) => !item.adminOnly || user?.permissions?.includes("manage_users"))
+            .map((item) => {
             const isActive =
               currentPath === item.href ||
               (item.href !== "/" && currentPath.startsWith(item.href))
@@ -145,7 +147,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {user.full_name}
                   </p>
                   <p className="truncate text-[11px] text-sidebar-foreground/50">
-                    {ROLE_LABELS[user.role] ?? user.role}
+                    {roleLabel(user.role)}
                   </p>
                 </div>
               )}

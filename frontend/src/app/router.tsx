@@ -9,6 +9,7 @@ import { CandidateDetailPage } from "@/modules/recruitment/pages/candidate-detai
 import { ApplicationDetailPage } from "@/modules/recruitment/pages/application-detail-page"
 import { PipelineBoardPage } from "@/modules/recruitment/pipeline/pipeline-board-page"
 import { SettingsPage } from "@/modules/recruitment/pages/settings-page"
+import { UsersPage } from "@/modules/admin/pages/users-page"
 import { LoginPage } from "@/pages/login-page"
 
 function ProtectedLayout() {
@@ -72,6 +73,7 @@ const router = createBrowserRouter([
         element: <ApplicationDetailPage />,
       },
       { path: "pipeline", element: <PipelineBoardPage /> },
+      { path: "users", element: <UsersPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

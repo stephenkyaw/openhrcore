@@ -61,3 +61,13 @@ export function useDeactivateUser() {
     },
   })
 }
+
+export function useActivateUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => adminApi.activateUser(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] })
+    },
+  })
+}

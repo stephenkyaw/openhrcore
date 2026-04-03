@@ -5,12 +5,12 @@ import {
   Database,
   Shield,
   Server,
-  Users,
-  Plus,
   Check,
   X,
   Pencil,
-  UserX,
+  Plus,
+  Trash2,
+  Lock,
 } from "lucide-react"
 import {
   PageHeader,
@@ -23,7 +23,6 @@ import {
   LoadingSpinner,
   Button,
   Input,
-  Select,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -39,30 +38,16 @@ import {
 import { usePipelines } from "@/modules/recruitment/hooks"
 import { useJobs, useCandidates, useApplications } from "@/modules/recruitment/hooks"
 import {
-  useUsers,
   useMe,
-  useRoles,
-  useCreateUser,
-  useUpdateUser,
-  useDeactivateUser,
+  useDynamicRoles,
+  usePermissions,
+  useCreateRole,
+  useUpdateRole,
+  useDeleteRole,
   useTenant,
   useUpdateTenant,
 } from "@/modules/admin/hooks"
-import type { UserRole } from "@/types"
-
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Admin",
-  recruiter: "Recruiter",
-  hiring_manager: "Hiring Manager",
-  viewer: "Viewer",
-}
-
-const ROLE_COLORS: Record<UserRole, string> = {
-  admin: "default",
-  recruiter: "info",
-  hiring_manager: "warning",
-  viewer: "secondary",
-}
+import type { RoleDetail, PermissionInfo } from "@/types"
 
 function GeneralTab() {
   const { data: tenant, isLoading: tenantLoading } = useTenant()
@@ -78,7 +63,7 @@ function GeneralTab() {
   const [tenantSlug, setTenantSlug] = useState("")
   const [tenantDomain, setTenantDomain] = useState("")
 
-  const isAdmin = me?.role === "admin"
+  const isAdmin = me?.permissions?.includes("manage_tenant")
 
   const startEdit = () => {
     if (!tenant) return
@@ -204,8 +189,8 @@ function GeneralTab() {
           </div>
           <Separator />
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Auth Mode</span>
-            <Badge variant="warning">Dev Bypass</Badge>
+            <span className="text-muted-foreground">Auth</span>
+            <Badge variant="success">JWT</Badge>
           </div>
         </CardContent>
       </Card>
@@ -219,21 +204,15 @@ function GeneralTab() {
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
             <div className="rounded-lg bg-slate-50 p-3 text-center">
-              <p className="text-2xl font-bold text-foreground">
-                {jobs?.total ?? "—"}
-              </p>
+              <p className="text-2xl font-bold text-foreground">{jobs?.total ?? "—"}</p>
               <p className="text-xs text-muted-foreground">Jobs</p>
             </div>
             <div className="rounded-lg bg-slate-50 p-3 text-center">
-              <p className="text-2xl font-bold text-foreground">
-                {candidates?.total ?? "—"}
-              </p>
+              <p className="text-2xl font-bold text-foreground">{candidates?.total ?? "—"}</p>
               <p className="text-xs text-muted-foreground">Candidates</p>
             </div>
             <div className="rounded-lg bg-slate-50 p-3 text-center">
-              <p className="text-2xl font-bold text-foreground">
-                {applications?.total ?? "—"}
-              </p>
+              <p className="text-2xl font-bold text-foreground">{applications?.total ?? "—"}</p>
               <p className="text-xs text-muted-foreground">Applications</p>
             </div>
           </div>
@@ -249,7 +228,7 @@ function GeneralTab() {
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Provider</span>
-            <span className="font-medium">Keycloak (JWT)</span>
+            <span className="font-medium">JWT (Local + Keycloak)</span>
           </div>
           <Separator />
           <div className="flex items-center justify-between text-sm">
@@ -259,7 +238,7 @@ function GeneralTab() {
           <Separator />
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Your Role</span>
-            <Badge variant="default">{me ? ROLE_LABELS[me.role] : "—"}</Badge>
+            <Badge variant="default">{me?.role ?? "—"}</Badge>
           </div>
         </CardContent>
       </Card>
@@ -267,61 +246,96 @@ function GeneralTab() {
   )
 }
 
-function TeamTab() {
-  const { data: users, isLoading } = useUsers()
-  const createUser = useCreateUser()
-  const updateUser = useUpdateUser()
-  const deactivateUser = useDeactivateUser()
+
+function RolesTab() {
+  const { data: roles, isLoading } = useDynamicRoles()
+  const { data: allPermissions } = usePermissions()
+  const { data: me } = useMe()
+  const createRole = useCreateRole()
+  const updateRole = useUpdateRole()
+  const deleteRole = useDeleteRole()
   const { toast } = useToast()
 
+  const canManage = me?.permissions?.includes("manage_roles")
+
   const [showCreate, setShowCreate] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editRole, setEditRole] = useState<UserRole>("viewer")
+  const [editingRole, setEditingRole] = useState<RoleDetail | null>(null)
+  const [formName, setFormName] = useState("")
+  const [formDesc, setFormDesc] = useState("")
+  const [formPerms, setFormPerms] = useState<Set<string>>(new Set())
 
-  const [newName, setNewName] = useState("")
-  const [newEmail, setNewEmail] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [newRole, setNewRole] = useState<UserRole>("viewer")
+  const openCreate = () => {
+    setFormName("")
+    setFormDesc("")
+    setFormPerms(new Set())
+    setEditingRole(null)
+    setShowCreate(true)
+  }
 
-  const handleCreate = async () => {
-    if (!newName.trim() || !newEmail.trim() || !newPassword.trim()) return
+  const openEdit = (role: RoleDetail) => {
+    setFormName(role.name)
+    setFormDesc(role.description)
+    setFormPerms(new Set(role.permissions))
+    setEditingRole(role)
+    setShowCreate(true)
+  }
+
+  const togglePerm = (key: string) => {
+    setFormPerms((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const handleSave = async () => {
+    if (!formName.trim()) {
+      toast({ type: "error", message: "Role name is required" })
+      return
+    }
     try {
-      await createUser.mutateAsync({
-        full_name: newName.trim(),
-        email: newEmail.trim(),
-        password: newPassword,
-        role: newRole,
-      })
-      toast({ type: "success", message: "Team member added" })
+      if (editingRole) {
+        await updateRole.mutateAsync({
+          id: editingRole.id,
+          data: {
+            name: editingRole.is_system ? undefined : formName.trim(),
+            description: formDesc.trim(),
+            permissions: Array.from(formPerms),
+          },
+        })
+        toast({ type: "success", message: "Role updated" })
+      } else {
+        await createRole.mutateAsync({
+          name: formName.trim(),
+          description: formDesc.trim(),
+          permissions: Array.from(formPerms),
+        })
+        toast({ type: "success", message: "Role created" })
+      }
       setShowCreate(false)
-      setNewName("")
-      setNewEmail("")
-      setNewPassword("")
-      setNewRole("viewer")
-    } catch {
-      toast({ type: "error", message: "Failed to add team member" })
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast({ type: "error", message: msg || "Failed to save role" })
     }
   }
 
-  const handleRoleUpdate = async (userId: string) => {
+  const handleDelete = async (role: RoleDetail) => {
+    if (!confirm(`Delete role "${role.name}"? This cannot be undone.`)) return
     try {
-      await updateUser.mutateAsync({ id: userId, data: { role: editRole } })
-      toast({ type: "success", message: "Role updated" })
-      setEditingId(null)
-    } catch {
-      toast({ type: "error", message: "Failed to update role" })
+      await deleteRole.mutateAsync(role.id)
+      toast({ type: "success", message: `Role "${role.name}" deleted` })
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      toast({ type: "error", message: msg || "Failed to delete role" })
     }
   }
 
-  const handleDeactivate = async (userId: string, name: string) => {
-    if (!confirm(`Deactivate ${name}? They will lose access.`)) return
-    try {
-      await deactivateUser.mutateAsync(userId)
-      toast({ type: "success", message: `${name} deactivated` })
-    } catch {
-      toast({ type: "error", message: "Failed to deactivate user" })
-    }
-  }
+  const permGroups = (allPermissions ?? []).reduce<Record<string, PermissionInfo[]>>((acc, p) => {
+    if (!acc[p.group]) acc[p.group] = []
+    acc[p.group].push(p)
+    return acc
+  }, {})
 
   if (isLoading) {
     return (
@@ -332,321 +346,215 @@ function TeamTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Team Members</h3>
+          <h3 className="text-sm font-semibold text-foreground">Roles & Permissions</h3>
           <p className="text-xs text-muted-foreground">
-            {users?.length ?? 0} member{(users?.length ?? 0) !== 1 ? "s" : ""}
+            {roles?.length ?? 0} roles defined. Create custom roles to fit your workflow.
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus className="mr-1 size-3" /> Add Member
-        </Button>
+        {canManage && (
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="mr-1.5 size-3.5" /> New Role
+          </Button>
+        )}
       </div>
 
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
+      {/* Role cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {roles?.map((role) => (
+          <Card key={role.id}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Shield className="size-4 text-indigo-500" />
+                  {role.name.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                  {role.is_system && (
+                    <Lock className="size-3 text-muted-foreground" title="System role" />
+                  )}
+                </CardTitle>
+                {canManage && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEdit(role)}
+                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground"
+                      title="Edit role"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                    {!role.is_system && (
+                      <button
+                        onClick={() => handleDelete(role)}
+                        className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+                        title="Delete role"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">{role.description}</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-1.5">
+                {role.permissions.length > 0 ? (
+                  role.permissions.map((p) => (
+                    <span
+                      key={p}
+                      className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700"
+                    >
+                      {p.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">No permissions</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Permission matrix */}
+      {roles && roles.length > 0 && allPermissions && allPermissions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Permission Matrix</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-slate-50/80">
+                    <th className="sticky left-0 bg-slate-50/80 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Permission
+                    </th>
+                    {roles.map((role) => (
+                      <th
+                        key={role.id}
+                        className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                      >
+                        {role.name.replace(/_/g, " ")}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {allPermissions.map((perm) => (
+                    <tr key={perm.key} className="transition-colors hover:bg-slate-50/50">
+                      <td className="sticky left-0 bg-white px-4 py-2.5 font-medium text-foreground">
+                        {perm.label}
+                        <span className="ml-2 text-[10px] text-muted-foreground">{perm.group}</span>
+                      </td>
+                      {roles.map((role) => (
+                        <td key={role.id} className="px-4 py-2.5 text-center">
+                          {role.permissions.includes(perm.key) ? (
+                            <Check className="mx-auto size-4 text-green-600" />
+                          ) : (
+                            <X className="mx-auto size-4 text-slate-300" />
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create / Edit Role Dialog */}
+      <Dialog open={showCreate} onOpenChange={() => setShowCreate(false)}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Team Member</DialogTitle>
+            <DialogTitle>{editingRole ? "Edit Role" : "Create New Role"}</DialogTitle>
             <DialogDescription>
-              Create a new user account in your organisation.
+              {editingRole
+                ? `Update permissions for "${editingRole.name}".${editingRole.is_system ? " System role name cannot be changed." : ""}`
+                : "Define a custom role with specific permissions."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-4 py-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Full Name
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Role Name {editingRole?.is_system && <Lock className="ml-1 inline size-3" />}
               </label>
               <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. Jane Smith"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. senior_recruiter"
+                disabled={editingRole?.is_system}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Email
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Description
               </label>
               <Input
-                type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="e.g. jane@company.com"
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+                placeholder="What can this role do?"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Password
+              <label className="mb-2 block text-xs font-medium text-muted-foreground">
+                Permissions
               </label>
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Min 6 characters"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                Role
-              </label>
-              <Select
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value as UserRole)}
-              >
-                <option value="admin">Admin</option>
-                <option value="recruiter">Recruiter</option>
-                <option value="hiring_manager">Hiring Manager</option>
-                <option value="viewer">Viewer</option>
-              </Select>
+              <div className="max-h-64 space-y-3 overflow-y-auto rounded-lg border border-border p-3">
+                {Object.entries(permGroups).map(([group, perms]) => (
+                  <div key={group}>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {group}
+                    </p>
+                    <div className="space-y-1">
+                      {perms.map((p) => (
+                        <label
+                          key={p.key}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formPerms.has(p.key)}
+                            onChange={() => togglePerm(p.key)}
+                            className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-sm text-foreground">{p.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {formPerms.size} permission{formPerms.size !== 1 ? "s" : ""} selected
+              </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={handleCreate} disabled={createUser.isPending}>
-              {createUser.isPending ? "Adding..." : "Add Member"}
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={createRole.isPending || updateRole.isPending}
+            >
+              {(createRole.isPending || updateRole.isPending)
+                ? "Saving..."
+                : editingRole
+                  ? "Save Changes"
+                  : "Create Role"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-slate-50/80">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Role
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {users?.map((u) => (
-                  <tr key={u.id} className="transition-colors hover:bg-slate-50/50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex size-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
-                          {u.full_name
-                            .split(" ")
-                            .map((w) => w[0])
-                            .join("")
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </div>
-                        <span className="font-medium text-foreground">{u.full_name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
-                    <td className="px-4 py-3">
-                      {editingId === u.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <Select
-                            className="h-7 w-36 text-xs"
-                            value={editRole}
-                            onChange={(e) => setEditRole(e.target.value as UserRole)}
-                          >
-                            <option value="admin">Admin</option>
-                            <option value="recruiter">Recruiter</option>
-                            <option value="hiring_manager">Hiring Manager</option>
-                            <option value="viewer">Viewer</option>
-                          </Select>
-                          <button
-                            onClick={() => handleRoleUpdate(u.id)}
-                            className="rounded p-1 text-green-600 hover:bg-green-50"
-                          >
-                            <Check className="size-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="rounded p-1 text-muted-foreground hover:bg-slate-100"
-                          >
-                            <X className="size-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <Badge variant={ROLE_COLORS[u.role as UserRole] as "default" | "secondary" | "info" | "warning"}>
-                          {ROLE_LABELS[u.role as UserRole] ?? u.role}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={u.is_active ? "success" : "destructive"}>
-                        {u.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {editingId !== u.id && (
-                          <button
-                            onClick={() => {
-                              setEditingId(u.id)
-                              setEditRole(u.role as UserRole)
-                            }}
-                            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground"
-                            title="Edit role"
-                          >
-                            <Pencil className="size-3.5" />
-                          </button>
-                        )}
-                        {u.is_active && (
-                          <button
-                            onClick={() => handleDeactivate(u.id, u.full_name)}
-                            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
-                            title="Deactivate"
-                          >
-                            <UserX className="size-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {(!users || users.length === 0) && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      No team members found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
 
-function RolesTab() {
-  const { data: roles, isLoading } = useRoles()
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <LoadingSpinner />
-      </div>
-    )
-  }
-
-  const allPermissions = Array.from(
-    new Set(roles?.flatMap((r) => r.permissions) ?? []),
-  ).sort()
-
-  const permissionLabels: Record<string, string> = {
-    manage_users: "Manage Users",
-    manage_tenant: "Manage Tenant",
-    manage_jobs: "Manage Jobs",
-    manage_candidates: "Manage Candidates",
-    manage_applications: "Manage Applications",
-    manage_pipelines: "Manage Pipelines",
-    run_screening: "Run AI Screening",
-    manage_notes: "Manage Notes",
-    view_all: "View All",
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">Roles & Permissions</h3>
-        <p className="text-xs text-muted-foreground">
-          Permission matrix for all available roles. Roles are fixed by the platform.
-        </p>
-      </div>
-
-      {roles && roles.length > 0 && (
-        <div className="space-y-6">
-          {/* Role cards */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {roles.map((role) => (
-              <Card key={role.role}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Shield className="size-4 text-indigo-500" />
-                    {ROLE_LABELS[role.role] ?? role.role}
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">{role.description}</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-1.5">
-                    {role.permissions.map((p) => (
-                      <span
-                        key={p}
-                        className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700"
-                      >
-                        {permissionLabels[p] ?? p}
-                      </span>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Permission matrix table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Permission Matrix</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-slate-50/80">
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Permission
-                      </th>
-                      {roles.map((role) => (
-                        <th
-                          key={role.role}
-                          className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                        >
-                          {ROLE_LABELS[role.role] ?? role.role}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {allPermissions.map((perm) => (
-                      <tr key={perm} className="transition-colors hover:bg-slate-50/50">
-                        <td className="px-4 py-2.5 font-medium text-foreground">
-                          {permissionLabels[perm] ?? perm}
-                        </td>
-                        {roles.map((role) => (
-                          <td key={role.role} className="px-4 py-2.5 text-center">
-                            {role.permissions.includes(perm) ? (
-                              <Check className="mx-auto size-4 text-green-600" />
-                            ) : (
-                              <X className="mx-auto size-4 text-slate-300" />
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  )
-}
 
 function PipelinesTab() {
   const { data: pipelines, isLoading } = usePipelines()
@@ -726,21 +634,19 @@ function PipelinesTab() {
   )
 }
 
+
 export function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Manage your workspace, team, and configuration"
+        description="Manage your workspace, roles, and configuration"
       />
 
       <Tabs defaultValue="general">
         <TabsList>
           <TabsTrigger value="general">
             <Settings className="mr-1.5 size-3.5" /> General
-          </TabsTrigger>
-          <TabsTrigger value="team">
-            <Users className="mr-1.5 size-3.5" /> Team
           </TabsTrigger>
           <TabsTrigger value="roles">
             <Shield className="mr-1.5 size-3.5" /> Roles & Permissions
@@ -752,9 +658,6 @@ export function SettingsPage() {
 
         <TabsContent value="general">
           <GeneralTab />
-        </TabsContent>
-        <TabsContent value="team">
-          <TeamTab />
         </TabsContent>
         <TabsContent value="roles">
           <RolesTab />

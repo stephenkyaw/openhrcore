@@ -32,6 +32,8 @@ from src.modules.recruitment.domain.models import (
     PhoneLabel,
     Pipeline,
     PipelineStage,
+    Role,
+    RolePermissionEntry,
     StageType,
     Tenant,
     UserAccount,
@@ -66,6 +68,35 @@ async def seed(session: AsyncSession) -> None:
         is_active=True,
     )
     session.add(tenant)
+
+    from src.modules.admin.permissions import DEFAULT_ROLE_PERMISSIONS, ROLE_DESCRIPTIONS
+
+    existing_roles = await session.execute(
+        select(Role).where(Role.tenant_id == TENANT_ID).limit(1)
+    )
+    if existing_roles.scalars().first() is None:
+        role_defs = {
+            "admin": uuid.UUID("00000000-0000-0000-0000-a00000000001"),
+            "recruiter": uuid.UUID("00000000-0000-0000-0000-a00000000002"),
+            "hiring_manager": uuid.UUID("00000000-0000-0000-0000-a00000000003"),
+            "viewer": uuid.UUID("00000000-0000-0000-0000-a00000000004"),
+        }
+        for role_name, role_id in role_defs.items():
+            role_obj = Role(
+                id=role_id,
+                tenant_id=TENANT_ID,
+                name=role_name,
+                description=ROLE_DESCRIPTIONS.get(role_name, ""),
+                is_system=True,
+            )
+            session.add(role_obj)
+            for perm in DEFAULT_ROLE_PERMISSIONS.get(role_name, []):
+                session.add(RolePermissionEntry(
+                    id=uuid.uuid4(),
+                    tenant_id=TENANT_ID,
+                    role_id=role_id,
+                    permission=perm,
+                ))
 
     user = UserAccount(
         id=USER_ID,

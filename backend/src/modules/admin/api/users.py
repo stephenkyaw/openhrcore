@@ -12,13 +12,7 @@ from src.shared.auth.dependencies import CurrentUserDep
 from src.shared.auth.models import CurrentUser
 from src.shared.database.session import get_async_session
 
-from ..permissions import (
-    ROLE_DESCRIPTIONS,
-    ROLE_PERMISSIONS,
-    Permission,
-    get_role_permissions,
-    require_permission,
-)
+from ..permissions import Permission, get_role_permissions, require_permission
 from ..schemas import (
     CurrentUserProfileResponse,
     RolePermissionsResponse,
@@ -43,14 +37,14 @@ async def get_current_profile(
     svc = AdminService(session)
     account = await svc.get_user(user.tenant_id, user.user_id)
     role_str = account.role if isinstance(account.role, str) else account.role.value
-    perms = get_role_permissions(role_str)
+    perms = await get_role_permissions(session, user.tenant_id, role_str)
     return CurrentUserProfileResponse(
         id=account.id,
         tenant_id=account.tenant_id,
         email=account.email,
         full_name=account.full_name,
         role=role_str,
-        permissions=[p.value for p in perms],
+        permissions=list(perms),
     )
 
 
@@ -118,16 +112,31 @@ async def deactivate_user(
     return UserAccountResponse.model_validate(deactivated)
 
 
+@router.post("/{user_id}/activate", response_model=UserAccountResponse)
+async def activate_user(
+    user_id: UUID,
+    user: AdminUserDep,
+    session: SessionDep,
+) -> UserAccountResponse:
+    """Reactivate a deactivated user account (admin only)."""
+    svc = AdminService(session)
+    activated = await svc.activate_user(user.tenant_id, user_id)
+    return UserAccountResponse.model_validate(activated)
+
+
 @router.get("/roles/list", response_model=list[RolePermissionsResponse])
-async def list_roles(
+async def list_roles_legacy(
     user: CurrentUserDep,
+    session: SessionDep,
 ) -> list[RolePermissionsResponse]:
-    """List all available roles with their permissions."""
+    """List all available roles with their permissions (legacy endpoint)."""
+    svc = AdminService(session)
+    roles = await svc.list_roles(user.tenant_id)
     return [
         RolePermissionsResponse(
-            role=role,
-            description=ROLE_DESCRIPTIONS.get(role, ""),
-            permissions=[p.value for p in perms],
+            role=role.name,
+            description=role.description,
+            permissions=[rp.permission for rp in role.permissions],
         )
-        for role, perms in ROLE_PERMISSIONS.items()
+        for role in roles
     ]

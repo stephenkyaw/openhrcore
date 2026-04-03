@@ -98,7 +98,7 @@ async def login(
     from src.modules.admin.permissions import get_role_permissions
 
     role_str = user.role if isinstance(user.role, str) else user.role.value
-    perms = get_role_permissions(role_str)
+    perms = await get_role_permissions(session, user.tenant_id, role_str)
 
     token = _create_access_token(user, settings)
 
@@ -110,7 +110,7 @@ async def login(
             full_name=user.full_name,
             role=role_str,
             tenant_id=str(user.tenant_id),
-            permissions=[p.value for p in perms],
+            permissions=list(perms),
         ),
     )
 
@@ -137,7 +137,7 @@ async def get_session(
     from src.modules.admin.permissions import get_role_permissions
 
     role_str = account.role if isinstance(account.role, str) else account.role.value
-    perms = get_role_permissions(role_str)
+    perms = await get_role_permissions(session, account.tenant_id, role_str)
 
     return UserInfo(
         id=str(account.id),
@@ -145,7 +145,7 @@ async def get_session(
         full_name=account.full_name,
         role=role_str,
         tenant_id=str(account.tenant_id),
-        permissions=[p.value for p in perms],
+        permissions=list(perms),
     )
 
 

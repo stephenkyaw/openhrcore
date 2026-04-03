@@ -357,10 +357,41 @@ export interface PipelineBoardColumn {
 }
 
 // ---------------------------------------------------------------------------
-// Admin: User Management
+// Admin: Roles (dynamic)
 // ---------------------------------------------------------------------------
 
-export type UserRole = "admin" | "recruiter" | "hiring_manager" | "viewer"
+export interface RoleDetail {
+  id: string
+  tenant_id: string
+  name: string
+  description: string
+  is_system: boolean
+  permissions: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface RoleCreate {
+  name: string
+  description: string
+  permissions: string[]
+}
+
+export interface RoleUpdate {
+  name?: string
+  description?: string
+  permissions?: string[]
+}
+
+export interface PermissionInfo {
+  key: string
+  label: string
+  group: string
+}
+
+// ---------------------------------------------------------------------------
+// Admin: User Management
+// ---------------------------------------------------------------------------
 
 export interface UserAccount {
   id: string
@@ -369,7 +400,7 @@ export interface UserAccount {
   email: string
   full_name: string
   is_active: boolean
-  role: UserRole
+  role: string
   created_at: string
   updated_at: string
 }
@@ -378,17 +409,19 @@ export interface UserAccountCreate {
   email: string
   full_name: string
   password: string
-  role: UserRole
+  role: string
 }
 
 export interface UserAccountUpdate {
   full_name?: string
-  role?: UserRole
+  email?: string
+  role?: string
   is_active?: boolean
+  password?: string
 }
 
 export interface RolePermissions {
-  role: UserRole
+  role: string
   description: string
   permissions: string[]
 }
@@ -398,7 +431,7 @@ export interface CurrentUserProfile {
   tenant_id: string
   email: string
   full_name: string
-  role: UserRole
+  role: string
   permissions: string[]
 }
 

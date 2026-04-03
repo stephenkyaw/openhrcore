@@ -1,7 +1,11 @@
 import axios from "axios"
 import type {
   CurrentUserProfile,
+  PermissionInfo,
+  RoleCreate,
+  RoleDetail,
   RolePermissions,
+  RoleUpdate,
   TenantInfo,
   TenantUpdate,
   UserAccount,
@@ -50,11 +54,34 @@ export const adminApi = {
   deactivateUser: (id: string) =>
     adminClient.delete<UserAccount>(`/users/${id}`).then((r) => r.data),
 
+  activateUser: (id: string) =>
+    adminClient.post<UserAccount>(`/users/${id}/activate`).then((r) => r.data),
+
   getMe: () =>
     adminClient.get<CurrentUserProfile>("/users/me").then((r) => r.data),
 
+  // Legacy roles endpoint (returns simplified shape)
   getRoles: () =>
     adminClient.get<RolePermissions[]>("/users/roles/list").then((r) => r.data),
+
+  // Dynamic Roles CRUD
+  listRoles: () =>
+    adminClient.get<RoleDetail[]>("/roles").then((r) => r.data),
+
+  getRole: (id: string) =>
+    adminClient.get<RoleDetail>(`/roles/${id}`).then((r) => r.data),
+
+  createRole: (data: RoleCreate) =>
+    adminClient.post<RoleDetail>("/roles", data).then((r) => r.data),
+
+  updateRole: (id: string, data: RoleUpdate) =>
+    adminClient.patch<RoleDetail>(`/roles/${id}`, data).then((r) => r.data),
+
+  deleteRole: (id: string) =>
+    adminClient.delete(`/roles/${id}`).then(() => undefined),
+
+  listPermissions: () =>
+    adminClient.get<PermissionInfo[]>("/roles/permissions").then((r) => r.data),
 
   // Tenant
   getTenant: () =>
