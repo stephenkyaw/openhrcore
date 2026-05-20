@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
 import { TODAY, fmt } from '@/lib/dates';
 import { deptName, empById, positionName } from '@/lib/lookups';
@@ -13,7 +13,9 @@ import {
   CardHeader,
   CardTitle,
   Dialog,
+  Input,
   Select,
+  Sheet,
   Stat,
   TD,
   TH,
@@ -21,9 +23,10 @@ import {
   TR,
   Table,
   Tabs,
+  Textarea,
   PageHero,
 } from '@/components/ui';
-import { CheckInDialog, FormFooter, FormHeader } from '@/components/forms';
+import { CheckInDialog, FormField, FormFooter, FormGrid, FormHeader } from '@/components/forms';
 import { useStore } from '@/data/store';
 import { DEPARTMENTS, EMPLOYEES } from '@/data/seed';
 import {
@@ -44,7 +47,475 @@ function CheckinTile({ label, value, sub, pending }) {
   );
 }
 
-function AttToday() {
+function calcHours(start, end, breakMin = 60) {
+  if (!start || !end) return 0;
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  let mins = eh * 60 + em - (sh * 60 + sm) - breakMin;
+  if (mins < 0) mins += 24 * 60;
+  return Math.max(0, Math.round((mins / 60) * 10) / 10);
+}
+
+function attendanceStatus(rec) {
+  if (rec.status === 'on-leave') return <Badge tone="outline" size="sm">On leave</Badge>;
+  if (rec.status === 'late') return <Badge tone="warn" size="sm"><I.Clock size={9} />Late</Badge>;
+  return <Badge tone="ok" size="sm"><I.Check size={9} />Present</Badge>;
+}
+
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function actionDefaults(action) {
+  const today = fmt(TODAY);
+  const firstEmp = action?.item?.emp || EMPLOYEES[0]?.id || '';
+  const firstShift = SHIFTS[0]?.id || '';
+  const common = {
+    name: action?.item?.name || action?.item?.id || '',
+    note: '',
+    employee: firstEmp,
+    date: action?.item?.date || today,
+    startDate: today,
+    endDate: today,
+    department: 'all',
+    shiftId: firstShift,
+    day: '0',
+  };
+  if (!action) return common;
+  if (action.action === 'new_shift') return { ...common, name: 'Night shift', from: '21:00', to: '06:00', break: 60, color: 285 };
+  if (action.action === 'assign_shift') return { ...common, employee: action.item?.emp || firstEmp, day: String(action.item?.day ?? 0), shiftId: action.item?.shiftId || firstShift };
+  if (action.action === 'add_to_roster') return { ...common, rosterTemplate: 'weekdays', repeatWeeks: 1, employee: firstEmp };
+  if (action.action === 'apply_rotation') return { ...common, pattern: 'Weekly rotation · Late shift', conflictPolicy: 'skip-approved', endDate: fmt(new Date(TODAY.getTime() + 13 * 86400000)) };
+  if (action.action === 'new_pattern' || action.action === 'edit_pattern') return { ...common, name: action.item?.name || 'Weekly rotation · Late shift', period: 'Every 4 weeks', sequence: 'Standard, Standard, Late, Late', effectiveDate: today };
+  if (action.action === 'new_overtime_request') return { ...common, hours: 2, reason: 'Month-end close support', approver: 'People Ops Manager' };
+  if (action.action === 'new_record') return { ...common, in: '09:00', out: '18:00', status: 'present', source: 'manual', wfh: false };
+  if (action.action === 'request_correction') return { ...common, kind: 'forgot-checkout', currentIn: '09:00', currentOut: '', proposedIn: '09:00', proposedOut: '18:00', reason: 'Forgot to check out at kiosk.' };
+  if (action.action === 'bulk_regularize') return { ...common, status: 'present', source: 'regularization', endDate: today };
+  return common;
+}
+
+function employeeOptions() {
+  return EMPLOYEES.map((e) => (
+    <option key={e.id} value={e.id}>{e.first} {e.last}</option>
+  ));
+}
+
+function shiftOptions({ includeOff = false } = {}) {
+  return (
+    <>
+      {includeOff && <option value="">Day off</option>}
+      {SHIFTS.map((s) => (
+        <option key={s.id} value={s.id}>{s.name} · {s.from}-{s.to}</option>
+      ))}
+    </>
+  );
+}
+
+function departmentOptions() {
+  return (
+    <>
+      <option value="all">All departments</option>
+      {DEPARTMENTS.map((d) => (
+        <option key={d.id} value={d.id}>{d.name}</option>
+      ))}
+    </>
+  );
+}
+
+function slugId(prefix, value) {
+  const base = String(value || prefix)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 24);
+  return `${prefix}-${base || Date.now().toString(36)}`;
+}
+
+function DetailRow({ icon, label, children }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="mt-0.5 text-muted-fg flex-none">{icon}</span>
+      <div className="min-w-0">
+        <div className="text-[10.5px] uppercase tracking-wider text-muted-fg font-medium mb-0.5">{label}</div>
+        <div className="text-[12.5px] text-fg/90 break-words">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceDetailSheet({ detail, onClose, onEdit, onAction }) {
+  if (!detail) return null;
+  const { type, item } = detail;
+  const emp = item.emp ? empById(item.emp) : null;
+  const title =
+    type === 'record' ? `${emp?.first} ${emp?.last} · ${item.date}` :
+    type === 'shift' ? item.name :
+    type === 'overtime' ? `Overtime · ${emp?.first} ${emp?.last}` :
+    type === 'correction' ? `Correction · ${emp?.first} ${emp?.last}` :
+    type === 'swap' ? `Swap request · ${item.id}` :
+    type === 'report' ? item.name :
+    'Attendance detail';
+
+  return (
+    <Sheet open={!!detail} onClose={onClose} width={560}>
+      <div className="p-5 border-b border-border-soft">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-fg font-semibold">Attendance · {type}</div>
+            <h2 className="text-[18px] font-semibold mt-1 truncate">{title}</h2>
+            <div className="text-[12px] text-muted-fg font-mono mt-1">{item.id || item.date || item.name}</div>
+          </div>
+          <Button variant="ghost" size="icon-sm" onClick={onClose}><I.X size={13} /></Button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto scroll-thin p-5 space-y-4">
+        <Card>
+          <CardHeader><CardTitle>Details</CardTitle></CardHeader>
+          <CardBody className="space-y-3">
+            {emp && <DetailRow icon={<I.Users size={13} />} label="Employee">{emp.first} {emp.last} · {positionName(emp.position)}</DetailRow>}
+            {type === 'record' && (
+              <>
+                <DetailRow icon={<I.Calendar size={13} />} label="Date">{item.date}</DetailRow>
+                <DetailRow icon={<I.Clock size={13} />} label="Time">{item.in || '—'} to {item.out || '—'} · {item.hours?.toFixed?.(1) || 0}h</DetailRow>
+                <DetailRow icon={<I.MapPin size={13} />} label="Source">{item.source || 'manual'} · {item.wfh ? 'WFH' : 'on-site'}</DetailRow>
+                <DetailRow icon={<I.Shield size={13} />} label="Status">{attendanceStatus(item)}</DetailRow>
+              </>
+            )}
+            {type === 'shift' && (
+              <>
+                <DetailRow icon={<I.Clock size={13} />} label="Window">{item.from} to {item.to} · break {item.break}min</DetailRow>
+                <DetailRow icon={<I.Tag size={13} />} label="Color hue">{item.color}</DetailRow>
+              </>
+            )}
+            {type === 'overtime' && (
+              <>
+                <DetailRow icon={<I.Calendar size={13} />} label="Date">{item.date}</DetailRow>
+                <DetailRow icon={<I.Clock size={13} />} label="Hours">{item.hours}h</DetailRow>
+                <DetailRow icon={<I.Doc size={13} />} label="Reason">{item.reason}</DetailRow>
+              </>
+            )}
+            {type === 'correction' && (
+              <>
+                <DetailRow icon={<I.Calendar size={13} />} label="Date">{item.date}</DetailRow>
+                <DetailRow icon={<I.Refresh size={13} />} label="Current">{item.current.in || '—'} to {item.current.out || '—'}</DetailRow>
+                <DetailRow icon={<I.Edit size={13} />} label="Proposed">{item.proposed.in || '—'} to {item.proposed.out || '—'}</DetailRow>
+                <DetailRow icon={<I.Doc size={13} />} label="Reason">{item.reason}</DetailRow>
+              </>
+            )}
+            {type === 'swap' && (
+              <>
+                <DetailRow icon={<I.Calendar size={13} />} label="Date">{item.date}</DetailRow>
+                <DetailRow icon={<I.Refresh size={13} />} label="Swap">{empById(item.from).first} to {empById(item.to).first}</DetailRow>
+                <DetailRow icon={<I.Clock size={13} />} label="Shift">{item.shift}</DetailRow>
+                <DetailRow icon={<I.Doc size={13} />} label="Reason">{item.reason}</DetailRow>
+              </>
+            )}
+            {type === 'report' && (
+              <>
+                <DetailRow icon={<I.Doc size={13} />} label="Report">{item.name}</DetailRow>
+                <DetailRow icon={<I.Users size={13} />} label="Scope">{item.scope || 'Attendance operations'}</DetailRow>
+                <DetailRow icon={<I.Clock size={13} />} label="Metric">{item.metric || 'Open detail'}</DetailRow>
+              </>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+      <div className="p-4 border-t border-border-soft flex items-center justify-between">
+        <Button variant="ghost" size="md" onClick={onClose}>Close</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="md" onClick={() => onAction(type, item, 'export')}><I.Download size={13} />Export</Button>
+          {['record', 'shift', 'overtime', 'correction'].includes(type) && (
+            <Button size="md" onClick={() => onEdit(type, item)}><I.Edit size={13} />Edit</Button>
+          )}
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+function AttendanceEditDialog({ edit, onClose, onSave }) {
+  const [form, setForm] = useState({});
+  const open = !!edit;
+  useEffect(() => { if (open) setForm({ ...edit.item }); }, [open, edit]);
+  if (!open) return null;
+  const type = edit.type;
+  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <Dialog open onClose={onClose} width={540}>
+      <FormHeader eyebrow="Attendance · Update" title={`Edit ${type}`} sub="Manual changes are audit logged and keep before/after values." onClose={onClose} />
+      <div className="p-5 space-y-3.5">
+        {type === 'record' && (
+          <>
+            <FormGrid>
+              <FormField label="Date"><Input type="date" value={form.date || ''} onChange={(e) => update('date', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Status">
+                <Select value={form.status || 'present'} onChange={(e) => update('status', e.target.value)}>
+                  <option value="present">Present</option><option value="late">Late</option><option value="on-leave">On leave</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Check in"><Input value={form.in || ''} onChange={(e) => update('in', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Check out"><Input value={form.out || ''} onChange={(e) => update('out', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <label className="flex items-center gap-2 text-[12.5px] cursor-pointer">
+              <input type="checkbox" checked={!!form.wfh} onChange={(e) => update('wfh', e.target.checked)} className="accent-current" />
+              <span>Working from home</span>
+            </label>
+          </>
+        )}
+        {type === 'shift' && (
+          <>
+            <FormField label="Name"><Input value={form.name || ''} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="From"><Input value={form.from || ''} onChange={(e) => update('from', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="To"><Input value={form.to || ''} onChange={(e) => update('to', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Break minutes"><Input type="number" value={form.break ?? 0} onChange={(e) => update('break', +e.target.value)} className="font-mono" /></FormField>
+          </>
+        )}
+        {(type === 'overtime' || type === 'correction') && (
+          <>
+            {type === 'overtime' && (
+              <FormGrid>
+                <FormField label="Date"><Input type="date" value={form.date || ''} onChange={(e) => update('date', e.target.value)} className="font-mono" /></FormField>
+                <FormField label="Hours"><Input type="number" step="0.5" value={form.hours ?? 0} onChange={(e) => update('hours', +e.target.value)} className="font-mono" /></FormField>
+              </FormGrid>
+            )}
+            {type === 'correction' && (
+              <>
+                <FormGrid>
+                  <FormField label="Current in"><Input value={form.current?.in || ''} onChange={(e) => update('current', { ...(form.current || {}), in: e.target.value })} className="font-mono" /></FormField>
+                  <FormField label="Current out"><Input value={form.current?.out || ''} onChange={(e) => update('current', { ...(form.current || {}), out: e.target.value })} className="font-mono" /></FormField>
+                </FormGrid>
+                <FormGrid>
+                  <FormField label="Proposed in"><Input value={form.proposed?.in || ''} onChange={(e) => update('proposed', { ...(form.proposed || {}), in: e.target.value })} className="font-mono" /></FormField>
+                  <FormField label="Proposed out"><Input value={form.proposed?.out || ''} onChange={(e) => update('proposed', { ...(form.proposed || {}), out: e.target.value })} className="font-mono" /></FormField>
+                </FormGrid>
+              </>
+            )}
+            <FormField label="Status">
+              <Select value={form.status || 'pending'} onChange={(e) => update('status', e.target.value)}>
+                <option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+              </Select>
+            </FormField>
+            <FormField label="Reason"><Textarea rows={3} value={form.reason || ''} onChange={(e) => update('reason', e.target.value)} /></FormField>
+          </>
+        )}
+      </div>
+      <FormFooter>
+        <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+        <Button size="md" onClick={() => onSave(type, edit.item, form)}><I.Check size={13} />Save changes</Button>
+      </FormFooter>
+    </Dialog>
+  );
+}
+
+function AttendanceActionDialog({ action, onClose, onSubmit }) {
+  const [form, setForm] = useState(actionDefaults(action));
+  useEffect(() => {
+    if (action) setForm(actionDefaults(action));
+  }, [action]);
+  if (!action) return null;
+  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const title = action.action.replaceAll('_', ' ');
+  const needsNote = !['new_overtime_request', 'request_correction', 'new_shift'].includes(action.action);
+
+  return (
+    <Dialog open onClose={onClose} width={620}>
+      <FormHeader eyebrow="Attendance · Action form" title={title} sub="Complete the action details. Submissions update the roster data and write an audit event." onClose={onClose} />
+      <div className="p-5 space-y-3.5">
+        {action.action === 'new_shift' && (
+          <>
+            <FormField label="Shift name"><Input value={form.name} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="Start"><Input value={form.from} onChange={(e) => update('from', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="End"><Input value={form.to} onChange={(e) => update('to', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Break minutes"><Input type="number" value={form.break} onChange={(e) => update('break', +e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Color hue"><Input type="number" min="0" max="360" value={form.color} onChange={(e) => update('color', +e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+          </>
+        )}
+
+        {(action.action === 'assign_shift' || action.action === 'add_to_roster') && (
+          <>
+            <FormGrid>
+              <FormField label="Employee">
+                <Select value={form.employee} onChange={(e) => update('employee', e.target.value)}>{employeeOptions()}</Select>
+              </FormField>
+              <FormField label="Effective date"><Input type="date" value={form.startDate} onChange={(e) => update('startDate', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label={action.action === 'assign_shift' ? 'Roster day' : 'Primary shift'}>
+                {action.action === 'assign_shift' ? (
+                  <Select value={form.day} onChange={(e) => update('day', e.target.value)}>
+                    {WEEK_DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                  </Select>
+                ) : (
+                  <Select value={form.shiftId} onChange={(e) => update('shiftId', e.target.value)}>{shiftOptions()}</Select>
+                )}
+              </FormField>
+              <FormField label={action.action === 'assign_shift' ? 'Shift' : 'Roster template'}>
+                {action.action === 'assign_shift' ? (
+                  <Select value={form.shiftId} onChange={(e) => update('shiftId', e.target.value)}>{shiftOptions({ includeOff: true })}</Select>
+                ) : (
+                  <Select value={form.rosterTemplate} onChange={(e) => update('rosterTemplate', e.target.value)}>
+                    <option value="weekdays">Weekdays only</option>
+                    <option value="full-week">Full week</option>
+                    <option value="weekend">Weekend only</option>
+                  </Select>
+                )}
+              </FormField>
+            </FormGrid>
+            {action.action === 'add_to_roster' && (
+              <FormField label="Repeat weeks"><Input type="number" min="1" max="12" value={form.repeatWeeks} onChange={(e) => update('repeatWeeks', +e.target.value)} className="font-mono" /></FormField>
+            )}
+          </>
+        )}
+
+        {action.action === 'apply_rotation' && (
+          <>
+            <FormGrid>
+              <FormField label="Pattern">
+                <Select value={form.pattern} onChange={(e) => update('pattern', e.target.value)}>
+                  <option>Weekly rotation · Late shift</option>
+                  <option>Weekend on-call · pair</option>
+                  <option>Night shift rotation</option>
+                </Select>
+              </FormField>
+              <FormField label="Department"><Select value={form.department} onChange={(e) => update('department', e.target.value)}>{departmentOptions()}</Select></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Start date"><Input type="date" value={form.startDate} onChange={(e) => update('startDate', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="End date"><Input type="date" value={form.endDate} onChange={(e) => update('endDate', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Conflict policy">
+              <Select value={form.conflictPolicy} onChange={(e) => update('conflictPolicy', e.target.value)}>
+                <option value="skip-approved">Skip approved leave and locked shifts</option>
+                <option value="overwrite-draft">Overwrite draft roster only</option>
+                <option value="require-review">Create manager review queue</option>
+              </Select>
+            </FormField>
+          </>
+        )}
+
+        {(action.action === 'new_pattern' || action.action === 'edit_pattern') && (
+          <>
+            <FormField label="Pattern name"><Input value={form.name} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="Period"><Input value={form.period} onChange={(e) => update('period', e.target.value)} /></FormField>
+              <FormField label="Effective date"><Input type="date" value={form.effectiveDate} onChange={(e) => update('effectiveDate', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Sequence"><Textarea rows={3} value={form.sequence} onChange={(e) => update('sequence', e.target.value)} placeholder="Standard, Standard, Late, Late" /></FormField>
+            <FormField label="Target department"><Select value={form.department} onChange={(e) => update('department', e.target.value)}>{departmentOptions()}</Select></FormField>
+          </>
+        )}
+
+        {action.action === 'new_overtime_request' && (
+          <>
+            <FormGrid>
+              <FormField label="Employee"><Select value={form.employee} onChange={(e) => update('employee', e.target.value)}>{employeeOptions()}</Select></FormField>
+              <FormField label="Date"><Input type="date" value={form.date} onChange={(e) => update('date', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Hours"><Input type="number" step="0.5" min="0.5" value={form.hours} onChange={(e) => update('hours', +e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Approver"><Input value={form.approver} onChange={(e) => update('approver', e.target.value)} /></FormField>
+            </FormGrid>
+            <FormField label="Reason"><Textarea rows={3} value={form.reason} onChange={(e) => update('reason', e.target.value)} /></FormField>
+          </>
+        )}
+
+        {action.action === 'new_record' && (
+          <>
+            <FormGrid>
+              <FormField label="Employee"><Select value={form.employee} onChange={(e) => update('employee', e.target.value)}>{employeeOptions()}</Select></FormField>
+              <FormField label="Date"><Input type="date" value={form.date} onChange={(e) => update('date', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Check in"><Input value={form.in} onChange={(e) => update('in', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Check out"><Input value={form.out} onChange={(e) => update('out', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Status">
+                <Select value={form.status} onChange={(e) => update('status', e.target.value)}>
+                  <option value="present">Present</option>
+                  <option value="late">Late</option>
+                  <option value="on-leave">On leave</option>
+                </Select>
+              </FormField>
+              <FormField label="Source">
+                <Select value={form.source} onChange={(e) => update('source', e.target.value)}>
+                  <option value="manual">Manual</option>
+                  <option value="kiosk">Kiosk</option>
+                  <option value="web">Web</option>
+                  <option value="mobile">Mobile</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+            <label className="flex items-center gap-2 text-[12.5px] cursor-pointer">
+              <input type="checkbox" checked={!!form.wfh} onChange={(e) => update('wfh', e.target.checked)} className="accent-current" />
+              <span>Working from home</span>
+            </label>
+          </>
+        )}
+
+        {action.action === 'request_correction' && (
+          <>
+            <FormGrid>
+              <FormField label="Employee"><Select value={form.employee} onChange={(e) => update('employee', e.target.value)}>{employeeOptions()}</Select></FormField>
+              <FormField label="Date"><Input type="date" value={form.date} onChange={(e) => update('date', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Correction type">
+              <Select value={form.kind} onChange={(e) => update('kind', e.target.value)}>
+                <option value="forgot-checkin">Forgot check-in</option>
+                <option value="forgot-checkout">Forgot check-out</option>
+                <option value="wrong-time">Wrong time</option>
+              </Select>
+            </FormField>
+            <FormGrid>
+              <FormField label="Current in"><Input value={form.currentIn} onChange={(e) => update('currentIn', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Current out"><Input value={form.currentOut} onChange={(e) => update('currentOut', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Proposed in"><Input value={form.proposedIn} onChange={(e) => update('proposedIn', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Proposed out"><Input value={form.proposedOut} onChange={(e) => update('proposedOut', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Reason"><Textarea rows={3} value={form.reason} onChange={(e) => update('reason', e.target.value)} /></FormField>
+          </>
+        )}
+
+        {action.action === 'bulk_regularize' && (
+          <>
+            <FormGrid>
+              <FormField label="Department"><Select value={form.department} onChange={(e) => update('department', e.target.value)}>{departmentOptions()}</Select></FormField>
+              <FormField label="Status">
+                <Select value={form.status} onChange={(e) => update('status', e.target.value)}>
+                  <option value="present">Present</option>
+                  <option value="late">Late</option>
+                  <option value="on-leave">On leave</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="From"><Input type="date" value={form.startDate} onChange={(e) => update('startDate', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="To"><Input type="date" value={form.endDate} onChange={(e) => update('endDate', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Source"><Input value={form.source} onChange={(e) => update('source', e.target.value)} /></FormField>
+          </>
+        )}
+
+        {needsNote && <FormField label="Audit note"><Textarea rows={2} value={form.note} onChange={(e) => update('note', e.target.value)} placeholder="Optional audit note" /></FormField>}
+      </div>
+      <FormFooter>
+        <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+        <Button size="md" onClick={() => onSubmit(form)}><I.Check size={13} />Submit</Button>
+      </FormFooter>
+    </Dialog>
+  );
+}
+
+function AttToday({ onView, onEdit, onAction }) {
   const today = fmt(TODAY);
   const todays = ATTENDANCE.filter((a) => a.date === today);
   const onLeaveToday = ATTENDANCE.filter((a) => a.date === today && a.status === 'on-leave').length;
@@ -78,7 +549,7 @@ function AttToday() {
               <span><span className="text-muted-fg mr-1.5">Expected end</span><span className="font-mono">17:54</span></span>
               <span><span className="text-muted-fg mr-1.5">Shift</span><span>Standard 09:00–18:00</span></span>
             </div>
-            <Button variant="outline" size="sm"><I.Edit size={11} />Request correction</Button>
+            <Button variant="outline" size="sm" onClick={() => onAction('correction', { id: 'new', emp: 'e001', date: today }, 'request_correction')}><I.Edit size={11} />Request correction</Button>
           </div>
         </CardBody>
       </Card>
@@ -98,7 +569,7 @@ function AttToday() {
             {todays.slice(0, 10).map((a) => {
               const e = empById(a.emp);
               return (
-                <TR key={a.id}>
+                <TR key={a.id} className="cursor-pointer" onClick={() => onView('record', a)}>
                   <TD>
                     <div className="flex items-center gap-2.5">
                       <Avatar name={`${e.first} ${e.last}`} hue={e.hue} size={24} />
@@ -129,7 +600,7 @@ function AttToday() {
   );
 }
 
-function AttRecords() {
+function AttRecords({ onView, onEdit, onAction }) {
   const [emp, setEmp] = useState('all');
   const [date, setDate] = useState('all');
   const filtered = ATTENDANCE.filter(
@@ -152,6 +623,7 @@ function AttRecords() {
           ))}
         </Select>
         <div className="ml-auto text-[12px] text-muted-fg font-mono">{filtered.length} records</div>
+        <Button size="sm" variant="outline" onClick={() => onAction('record', { id: 'new' }, 'new_record')}><I.Plus size={11} />New record</Button>
       </div>
       <Card>
         <Table>
@@ -165,7 +637,7 @@ function AttRecords() {
             {filtered.slice(0, 60).map((a) => {
               const e = empById(a.emp);
               return (
-                <TR key={a.id}>
+                <TR key={a.id} className="cursor-pointer" onClick={() => onView('record', a)}>
                   <TD className="font-mono text-[12.5px]">{a.date}</TD>
                   <TD>
                     <div className="flex items-center gap-2">
@@ -182,7 +654,7 @@ function AttRecords() {
                     {a.status === 'on-leave' && <Badge tone="outline" size="sm">On leave</Badge>}
                   </TD>
                   <TD className="text-[12px] text-muted-fg capitalize">{a.source}</TD>
-                  <TD className="text-right"><Button variant="ghost" size="icon-sm"><I.Edit size={12} /></Button></TD>
+                  <TD className="text-right"><Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); onEdit('record', a); }}><I.Edit size={12} /></Button></TD>
                 </TR>
               );
             })}
@@ -252,7 +724,7 @@ function AssignShiftDialog({ open, onClose, empId, day, weekStart, dayLabel }) {
   );
 }
 
-function AttRoster() {
+function AttRoster({ onView, onEdit, onAction }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const weekStart = new Date('2026-05-18');
   weekStart.setDate(weekStart.getDate() + weekOffset * 7);
@@ -296,18 +768,25 @@ function AttRoster() {
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="outline"><I.Refresh size={11} />Apply rotation</Button>
-            <Button size="sm" variant="outline"><I.Plus size={11} />Add to roster</Button>
-            <Button size="sm" variant="outline"><I.Download size={11} />Export</Button>
+            <Button size="sm" variant="outline" onClick={() => onAction('shift', { id: 'new' }, 'new_shift')}><I.Plus size={11} />New shift</Button>
+            <Button size="sm" variant="outline" onClick={() => onAction('roster', { id: 'assign' }, 'assign_shift')}><I.Clock size={11} />Assign shift</Button>
+            <Button size="sm" variant="outline" onClick={() => onAction('roster', { id: 'rotation' }, 'apply_rotation')}><I.Refresh size={11} />Apply rotation</Button>
+            <Button size="sm" variant="outline" onClick={() => onAction('roster', { id: 'new' }, 'add_to_roster')}><I.Plus size={11} />Add to roster</Button>
+            <Button size="sm" variant="outline" onClick={() => onAction('roster', { id: fmt(weekStart) }, 'export_roster')}><I.Download size={11} />Export</Button>
           </div>
         </div>
         <div className="px-4 py-2.5 border-b border-border flex items-center gap-4 bg-bg text-[11.5px] text-muted-fg flex-wrap">
           {shiftCounts.map((s) => (
-            <span key={s.id} className="inline-flex items-center gap-1.5">
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onView('shift', s)}
+              className="inline-flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-elevated focus-ring"
+            >
               <span className="w-2.5 h-2.5 rounded-sm" style={{ background: `oklch(0.65 0.13 ${s.color})` }} />
               <b className="text-fg">{s.name}</b> {s.from}–{s.to}
               <span className="font-mono tabular-nums opacity-70">×{s.count}</span>
-            </span>
+            </button>
           ))}
         </div>
         <div className="overflow-x-auto">
@@ -390,7 +869,7 @@ function AttRoster() {
               <CardTitle>Rotating shift patterns</CardTitle>
               <Caption className="mt-0.5">Apply repeating shift cycles automatically over a date range.</Caption>
             </div>
-            <Button size="sm" variant="outline"><I.Plus size={11} />New pattern</Button>
+          <Button size="sm" variant="outline" onClick={() => onAction('pattern', { id: 'new' }, 'new_pattern')}><I.Plus size={11} />New pattern</Button>
           </CardHeader>
           <div className="border-t border-border">
             {[
@@ -398,7 +877,7 @@ function AttRoster() {
               { name: 'Weekend on-call · pair', period: 'Bi-weekly · 2 people', sequence: ['Saki', 'Theo', 'Saki', 'Theo'], applied: 2, status: 'active' },
               { name: 'Night shift rotation', period: '4-on / 4-off', sequence: ['Night', 'Night', 'Night', 'Night', 'Off', 'Off', 'Off', 'Off'], applied: 0, status: 'draft' },
             ].map((p, i) => (
-              <div key={i} className="px-4 py-3 border-b border-border last:border-0">
+              <div key={i} className="px-4 py-3 border-b border-border last:border-0 cursor-pointer hover:bg-elevated" onClick={() => onAction('pattern', { id: `pattern-${i}`, name: p.name }, 'edit_pattern')}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[13px] font-medium">{p.name}</span>
                   {p.status === 'active' ? <Badge tone="ok" size="sm"><I.CircleDot size={8} />Active</Badge> : <Badge tone="outline" size="sm">Draft</Badge>}
@@ -429,7 +908,7 @@ function AttRoster() {
               const from = empById(sw.from);
               const to = empById(sw.to);
               return (
-                <div key={sw.id} className="px-4 py-3 border-b border-border last:border-0">
+                <div key={sw.id} className="px-4 py-3 border-b border-border last:border-0 cursor-pointer hover:bg-elevated" onClick={() => onView('swap', sw)}>
                   <div className="flex items-center gap-2 mb-1">
                     <Avatar name={`${from.first} ${from.last}`} hue={from.hue} size={20} />
                     <span className="text-[12.5px] font-medium">{from.first}</span>
@@ -442,8 +921,8 @@ function AttRoster() {
                   <div className="flex items-center gap-1.5">
                     {sw.status === 'pending' ? (
                       <>
-                        <Button size="sm" variant="outline"><I.X size={11} />Decline</Button>
-                        <Button size="sm"><I.Check size={11} />Approve swap</Button>
+                        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onAction('swap', sw, 'decline_swap'); }}><I.X size={11} />Decline</Button>
+                        <Button size="sm" onClick={(e) => { e.stopPropagation(); onAction('swap', sw, 'approve_swap'); }}><I.Check size={11} />Approve swap</Button>
                       </>
                     ) : (
                       <Badge tone="ok"><I.Check size={9} />Approved</Badge>
@@ -470,25 +949,19 @@ function AttRoster() {
   );
 }
 
-function AttOvertime() {
-  const [reqs, setReqs] = useState(OT_REQUESTS);
-  const { toast, logAudit } = useStore();
-  const decide = (id, status) => {
-    setReqs((r) => r.map((x) => (x.id === id ? { ...x, status, decided: new Date().toISOString() } : x)));
-    logAudit({
-      action: status === 'approved' ? 'overtime.approve' : 'overtime.reject',
-      entity: `overtime:${id}`,
-      meta: {},
-    });
-    toast(status === 'approved' ? 'Overtime approved' : 'Overtime rejected');
-  };
+function AttOvertime({ onView, onEdit, onAction }) {
+  const [reqs] = useState(OT_REQUESTS);
 
   return (
     <div className="p-6 space-y-3">
+      <div className="flex items-center justify-between gap-2 text-[12px] text-muted-fg">
+        <span className="inline-flex items-center gap-2"><I.Clock size={12} /> Overtime approvals include request reason, approver, and payroll export status.</span>
+        <Button size="sm" variant="outline" onClick={() => onAction('overtime', { id: 'new', status: 'pending' }, 'new_overtime_request')}><I.Plus size={11} />New request</Button>
+      </div>
       {reqs.map((r) => {
         const e = empById(r.emp);
         return (
-          <Card key={r.id}>
+          <Card key={r.id} className="cursor-pointer hover:shadow-soft transition-shadow" onClick={() => onView('overtime', r)}>
             <div className="p-4 flex items-start gap-4">
               <Avatar name={`${e.first} ${e.last}`} hue={e.hue} size={36} />
               <div className="flex-1 min-w-0">
@@ -502,10 +975,11 @@ function AttOvertime() {
                 <div className="text-[13px] mt-1.5 italic text-fg/90">"{r.reason}"</div>
               </div>
               <div className="flex items-center gap-1.5 flex-none">
+                <Button variant="ghost" size="icon-sm" onClick={(ev) => { ev.stopPropagation(); onEdit('overtime', r); }}><I.Edit size={12} /></Button>
                 {r.status === 'pending' ? (
                   <>
-                    <Button variant="outline" size="md" onClick={() => decide(r.id, 'rejected')}><I.X size={13} />Reject</Button>
-                    <Button size="md" onClick={() => decide(r.id, 'approved')}><I.Check size={13} />Approve</Button>
+                    <Button variant="outline" size="md" onClick={(ev) => { ev.stopPropagation(); onAction('overtime', r, 'reject_overtime'); }}><I.X size={13} />Reject</Button>
+                    <Button size="md" onClick={(ev) => { ev.stopPropagation(); onAction('overtime', r, 'approve_overtime'); }}><I.Check size={13} />Approve</Button>
                   </>
                 ) : r.status === 'approved' ? (
                   <Badge tone="ok"><I.Check size={10} />Approved</Badge>
@@ -521,7 +995,7 @@ function AttOvertime() {
   );
 }
 
-function AttReports() {
+function AttReports({ onView, onAction }) {
   const lateByEmp = {};
   ATTENDANCE.forEach((a) => {
     if (a.status === 'late') lateByEmp[a.emp] = (lateByEmp[a.emp] || 0) + 1;
@@ -535,8 +1009,14 @@ function AttReports() {
     <div className="p-6 grid grid-cols-2 gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Lateness — last 5 working days</CardTitle>
-          <Badge tone="warn">{lateRows.length}</Badge>
+          <div>
+            <CardTitle>Lateness — last 5 working days</CardTitle>
+            <Caption className="mt-0.5">Click an employee for the attendance detail pack.</Caption>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Badge tone="warn">{lateRows.length}</Badge>
+            <Button size="sm" variant="outline" onClick={() => onAction('report', { id: 'late-last-5', name: 'Lateness — last 5 working days' }, 'export_report')}><I.Download size={11} />Export</Button>
+          </div>
         </CardHeader>
         <Table>
           <THead>
@@ -548,7 +1028,16 @@ function AttReports() {
             {lateRows.map(({ id, n }) => {
               const e = empById(id);
               return (
-                <TR key={id}>
+                <TR
+                  key={id}
+                  className="cursor-pointer"
+                  onClick={() => onView('report', {
+                    id: `late-${id}`,
+                    name: `${e.first} ${e.last} lateness`,
+                    scope: deptName(e.dept),
+                    metric: `${n} late day${n === 1 ? '' : 's'} · avg +${n * 6 + 4}m`,
+                  })}
+                >
                   <TD>
                     <div className="flex items-center gap-2">
                       <Avatar name={`${e.first} ${e.last}`} hue={e.hue} size={22} />
@@ -566,7 +1055,13 @@ function AttReports() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Hours worked — by team</CardTitle><Caption>This week</Caption></CardHeader>
+        <CardHeader>
+          <div>
+            <CardTitle>Hours worked — by team</CardTitle>
+            <Caption>This week</Caption>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => onAction('report', { id: 'team-hours', name: 'Hours worked — by team' }, 'export_report')}><I.Download size={11} />Export</Button>
+        </CardHeader>
         <CardBody className="space-y-3">
           {DEPARTMENTS.filter((d) => !d.parent).map((d) => {
             const empIds = EMPLOYEES.filter(
@@ -576,7 +1071,17 @@ function AttReports() {
             const expected = empIds.length * 9 * 5;
             const pct = expected ? Math.min(100, (hours / expected) * 100) : 0;
             return (
-              <div key={d.id}>
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => onView('report', {
+                  id: `hours-${d.id}`,
+                  name: `${d.name} hours worked`,
+                  scope: 'This week',
+                  metric: `${Math.round(hours)}h / ${expected}h · ${Math.round(pct)}%`,
+                })}
+                className="block w-full text-left rounded-md px-2 py-1.5 hover:bg-elevated focus-ring"
+              >
                 <div className="flex items-baseline justify-between mb-1">
                   <span className="text-[12.5px] font-medium">{d.name}</span>
                   <span className="text-[11.5px] font-mono tabular-nums text-muted-fg">
@@ -586,7 +1091,7 @@ function AttReports() {
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div className="h-full bg-accent" style={{ width: pct + '%' }} />
                 </div>
-              </div>
+              </button>
             );
           })}
         </CardBody>
@@ -602,31 +1107,21 @@ const CORRECTIONS = [
   { id: 'cr4', emp: 'e005', date: '2026-05-11', kind: 'forgot-checkout', current: { in: '09:00', out: null }, proposed: { in: '09:00', out: '17:45' }, reason: 'Coronation Day holiday — system did not auto check out.', status: 'approved', submitted: '2026-05-12T08:30:00Z', decided: '2026-05-12T11:00:00Z' },
 ];
 
-function AttCorrections() {
-  const { logAudit, toast } = useStore();
-  const [reqs, setReqs] = useState(CORRECTIONS);
-  const decide = (id, status) => {
-    setReqs((rs) => rs.map((r) => (r.id === id ? { ...r, status, decided: new Date().toISOString() } : r)));
-    logAudit({
-      action: status === 'approved' ? 'attendance.correction.approve' : 'attendance.correction.reject',
-      entity: `correction:${id}`,
-      meta: {},
-    });
-    toast(status === 'approved' ? 'Correction applied' : 'Correction rejected');
-  };
+function AttCorrections({ onView, onEdit, onAction }) {
+  const [reqs] = useState(CORRECTIONS);
 
   return (
     <div className="p-6 space-y-3">
       <div className="flex items-center gap-2 text-[12px] text-muted-fg">
         <I.Edit size={12} /> Corrections rewrite the attendance record. Before/after values are kept in the audit log.
-        <Button size="sm" variant="outline" className="ml-auto"><I.Plus size={11} />Request correction</Button>
-        <Button size="sm" variant="outline"><I.Refresh size={11} />Bulk regularize</Button>
+        <Button size="sm" variant="outline" className="ml-auto" onClick={() => onAction('correction', { id: 'new' }, 'request_correction')}><I.Plus size={11} />Request correction</Button>
+        <Button size="sm" variant="outline" onClick={() => onAction('correction', { id: 'bulk' }, 'bulk_regularize')}><I.Refresh size={11} />Bulk regularize</Button>
       </div>
       {reqs.map((r) => {
         const e = empById(r.emp);
         const ageDays = Math.max(0, Math.round((TODAY - new Date(r.submitted)) / 86400000));
         return (
-          <Card key={r.id}>
+          <Card key={r.id} className="cursor-pointer hover:shadow-soft transition-shadow" onClick={() => onView('correction', r)}>
             <div className="p-4 grid grid-cols-[auto_1fr_auto] gap-4">
               <Avatar name={`${e.first} ${e.last}`} hue={e.hue} size={36} />
               <div className="min-w-0">
@@ -657,10 +1152,11 @@ function AttCorrections() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 flex-none self-start">
+                <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); onEdit('correction', r); }}><I.Edit size={12} /></Button>
                 {r.status === 'pending' ? (
                   <>
-                    <Button variant="outline" size="md" onClick={() => decide(r.id, 'rejected')}><I.X size={13} />Reject</Button>
-                    <Button size="md" onClick={() => decide(r.id, 'approved')}><I.Check size={13} />Apply</Button>
+                    <Button variant="outline" size="md" onClick={(e) => { e.stopPropagation(); onAction('correction', r, 'reject_correction'); }}><I.X size={13} />Reject</Button>
+                    <Button size="md" onClick={(e) => { e.stopPropagation(); onAction('correction', r, 'apply_correction'); }}><I.Check size={13} />Apply</Button>
                   </>
                 ) : r.status === 'approved' ? (
                   <Badge tone="ok"><I.Check size={10} />Applied</Badge>
@@ -680,10 +1176,162 @@ export function Attendance({ params, onNav }) {
   const tab = params?.tab || 'today';
   const setTab = (t) => onNav('attendance', null, { tab: t });
   const [checkOpen, setCheckOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const [action, setAction] = useState(null);
+  const { toast, logAudit, bump } = useStore();
   const today = fmt(TODAY);
   const todays = ATTENDANCE.filter((a) => a.date === today);
   const lateToday = todays.filter((a) => a.status === 'late').length;
   const wfhToday = todays.filter((a) => a.wfh).length;
+
+  const viewItem = (type, item) => setDetail({ type, item });
+  const editItem = (type, item) => {
+    setEdit({ type, item });
+    setDetail(null);
+  };
+  const actionItem = (type, item, actionName) => {
+    if (actionName?.includes('export') || actionName === 'export') {
+      logAudit({ action: `attendance.${type}.export`, entity: `${type}:${item?.id || item?.name || 'all'}`, meta: { action: actionName } });
+      toast('Attendance export queued');
+      return;
+    }
+    const decisionMap = {
+      approve_overtime: ['approved', 'Overtime approved'],
+      reject_overtime: ['rejected', 'Overtime rejected'],
+      apply_correction: ['approved', 'Correction applied'],
+      reject_correction: ['rejected', 'Correction rejected'],
+      approve_swap: ['approved', 'Shift swap approved'],
+      decline_swap: ['rejected', 'Shift swap declined'],
+    };
+    if (decisionMap[actionName]) {
+      const [status, message] = decisionMap[actionName];
+      Object.assign(item, { status, decided: new Date().toISOString() });
+      logAudit({ action: `attendance.${actionName}`, entity: `${type}:${item.id}`, meta: { status } });
+      bump();
+      toast(message);
+      setDetail((d) => (d?.item === item ? { ...d, item } : d));
+      return;
+    }
+    setAction({ type, item, action: actionName });
+  };
+  const saveItem = (type, item, form) => {
+    const before = { ...item };
+    Object.assign(item, form);
+    if (type === 'record') {
+      item.hours = form.status === 'on-leave' ? 0 : calcHours(form.in, form.out);
+      if (form.status !== 'on-leave' && form.in && form.in > '09:15') item.status = 'late';
+      if (form.status !== 'on-leave' && form.in && form.in <= '09:15') item.status = 'present';
+    }
+    if (type === 'shift') {
+      item.break = Number(item.break || 0);
+    }
+    logAudit({ action: `attendance.${type}.update`, entity: `${type}:${item.id || item.name}`, meta: { before, after: { ...item } } });
+    bump();
+    toast(`${type[0].toUpperCase()}${type.slice(1)} updated`);
+    setEdit(null);
+  };
+  const submitAction = (values) => {
+    let entity = `${action.type}:${action.item?.id || values.name || 'new'}`;
+    let message = `${action.action.replaceAll('_', ' ')} completed`;
+
+    if (action.action === 'new_shift') {
+      const shift = {
+        id: slugId('s', values.name),
+        name: values.name || 'New shift',
+        from: values.from || '09:00',
+        to: values.to || '18:00',
+        break: Number(values.break || 0),
+        color: Number(values.color || 200),
+      };
+      SHIFTS.push(shift);
+      entity = `shift:${shift.id}`;
+      message = `Shift created: ${shift.name}`;
+    }
+
+    if (action.action === 'assign_shift') {
+      if (!ROSTER[values.employee]) ROSTER[values.employee] = Array(7).fill(null);
+      ROSTER[values.employee][Number(values.day || 0)] = values.shiftId || null;
+      const emp = empById(values.employee);
+      entity = `roster:${values.employee}:${values.day}`;
+      message = `Shift assigned to ${emp.first} for ${WEEK_DAYS[Number(values.day || 0)]}`;
+    }
+
+    if (action.action === 'add_to_roster') {
+      const week = Array(7).fill(null);
+      if (values.rosterTemplate === 'weekdays') {
+        [0, 1, 2, 3, 4].forEach((i) => { week[i] = values.shiftId; });
+      } else if (values.rosterTemplate === 'weekend') {
+        [5, 6].forEach((i) => { week[i] = values.shiftId; });
+      } else {
+        week.fill(values.shiftId);
+      }
+      ROSTER[values.employee] = week;
+      const emp = empById(values.employee);
+      entity = `roster:${values.employee}`;
+      message = `${emp.first} added to roster`;
+    }
+
+    if (action.action === 'new_overtime_request') {
+      const req = {
+        id: slugId('ot', `${values.employee}-${values.date}-${Date.now().toString(36)}`),
+        emp: values.employee,
+        date: values.date,
+        hours: Number(values.hours || 0),
+        reason: values.reason || 'Overtime request',
+        status: 'pending',
+        approver: values.approver || 'Manager',
+        submitted: new Date().toISOString(),
+      };
+      OT_REQUESTS.unshift(req);
+      entity = `overtime:${req.id}`;
+      message = 'Overtime request created';
+    }
+
+    if (action.action === 'new_record') {
+      const record = {
+        id: slugId('att', `${values.employee}-${values.date}-${Date.now().toString(36)}`),
+        emp: values.employee,
+        date: values.date,
+        in: values.status === 'on-leave' ? null : values.in,
+        out: values.status === 'on-leave' ? null : values.out,
+        hours: values.status === 'on-leave' ? 0 : calcHours(values.in, values.out),
+        status: values.status,
+        source: values.source || 'manual',
+        wfh: !!values.wfh,
+      };
+      ATTENDANCE.unshift(record);
+      entity = `record:${record.id}`;
+      message = 'Attendance record created';
+    }
+
+    if (action.action === 'request_correction') {
+      const req = {
+        id: slugId('cr', `${values.employee}-${values.date}-${Date.now().toString(36)}`),
+        emp: values.employee,
+        date: values.date,
+        kind: values.kind || 'wrong-time',
+        current: { in: values.currentIn || null, out: values.currentOut || null },
+        proposed: { in: values.proposedIn || null, out: values.proposedOut || null },
+        reason: values.reason || 'Attendance correction request',
+        status: 'pending',
+        submitted: new Date().toISOString(),
+      };
+      CORRECTIONS.unshift(req);
+      entity = `correction:${req.id}`;
+      message = 'Correction request created';
+    }
+
+    logAudit({
+      action: `attendance.${action.type}.${action.action}`,
+      entity,
+      meta: { ...values },
+    });
+    bump();
+    toast(message);
+    setAction(null);
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
       <PageHero
@@ -693,7 +1341,7 @@ export function Attendance({ params, onNav }) {
         sub="Track time, presence, rosters, overtime, correction requests, and team attendance reporting."
         actions={
           <>
-            <Button variant="outline" size="md"><I.Download size={13} />Export</Button>
+            <Button variant="outline" size="md" onClick={() => actionItem('attendance', { id: today }, 'export')}><I.Download size={13} />Export</Button>
             <Button size="md" onClick={() => setCheckOpen(true)}><I.Clock size={13} />Check in</Button>
           </>
         }
@@ -719,14 +1367,17 @@ export function Attendance({ params, onNav }) {
         />
       </div>
       <div className="flex-1 overflow-y-auto scroll-thin">
-        {tab === 'today' && <AttToday />}
-        {tab === 'records' && <AttRecords />}
-        {tab === 'roster' && <AttRoster />}
-        {tab === 'overtime' && <AttOvertime />}
-        {tab === 'corrections' && <AttCorrections />}
-        {tab === 'reports' && <AttReports />}
+        {tab === 'today' && <AttToday onView={viewItem} onEdit={editItem} onAction={actionItem} />}
+        {tab === 'records' && <AttRecords onView={viewItem} onEdit={editItem} onAction={actionItem} />}
+        {tab === 'roster' && <AttRoster onView={viewItem} onEdit={editItem} onAction={actionItem} />}
+        {tab === 'overtime' && <AttOvertime onView={viewItem} onEdit={editItem} onAction={actionItem} />}
+        {tab === 'corrections' && <AttCorrections onView={viewItem} onEdit={editItem} onAction={actionItem} />}
+        {tab === 'reports' && <AttReports onView={viewItem} onAction={actionItem} />}
       </div>
       <CheckInDialog open={checkOpen} onClose={() => setCheckOpen(false)} />
+      <AttendanceDetailSheet detail={detail} onClose={() => setDetail(null)} onEdit={editItem} onAction={actionItem} />
+      <AttendanceEditDialog edit={edit} onClose={() => setEdit(null)} onSave={saveItem} />
+      <AttendanceActionDialog action={action} onClose={() => setAction(null)} onSubmit={submitAction} />
     </div>
   );
 }

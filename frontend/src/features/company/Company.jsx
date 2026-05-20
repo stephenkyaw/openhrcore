@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
 import { TODAY } from '@/lib/dates';
 import { deptName, empById } from '@/lib/lookups';
@@ -12,9 +12,12 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
+  Dialog,
+  Input,
   Label,
   PageHero,
   Select,
+  Sheet,
   Stat,
   TD,
   TH,
@@ -23,6 +26,7 @@ import {
   Table,
   Tabs,
 } from '@/components/ui';
+import { FormField, FormFooter, FormGrid, FormHeader } from '@/components/forms';
 import {
   NewDepartmentDialog,
   NewHolidayDialog,
@@ -42,7 +46,276 @@ function Field({ label, value, mono }) {
   );
 }
 
-function Departments() {
+function ActionMenu({ item, type, onView, onEdit, onArchive }) {
+  return (
+    <div className="absolute right-2 top-8 w-[180px] bg-card border border-border rounded-md shadow-lg z-30 anim-slide-up overflow-hidden text-left" onClick={(e) => e.stopPropagation()}>
+      <button className="w-full px-3 py-1.5 hover:bg-muted/60 flex items-center gap-2 text-[12.5px]" onClick={() => onView(type, item)}>
+        <I.Eye size={12} className="text-muted-fg" />View details
+      </button>
+      <button className="w-full px-3 py-1.5 hover:bg-muted/60 flex items-center gap-2 text-[12.5px]" onClick={() => onEdit(type, item)}>
+        <I.Edit size={12} className="text-muted-fg" />Edit
+      </button>
+      <button className="w-full px-3 py-1.5 hover:bg-muted/60 flex items-center gap-2 text-[12.5px]" onClick={() => onArchive(type, item)}>
+        <I.AlertTriangle size={12} className="text-warn" />Archive
+      </button>
+    </div>
+  );
+}
+
+function DetailRow({ icon, label, children }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span className="mt-0.5 text-muted-fg flex-none">{icon}</span>
+      <div className="min-w-0">
+        <div className="text-[10.5px] uppercase tracking-wider text-muted-fg font-medium mb-0.5">{label}</div>
+        <div className="text-[12.5px] text-fg/90 break-words">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function CompanyDetailSheet({ detail, onClose, onEdit, onAction }) {
+  if (!detail) return null;
+  const { type, item } = detail;
+  const title =
+    type === 'entity' ? item.name :
+    type === 'department' ? item.name :
+    type === 'position' ? item.title :
+    type === 'location' ? item.name :
+    type === 'holiday' ? item.name :
+    type === 'transfer' ? `Transfer ${item.id}` :
+    item.name || item.title || 'Detail';
+  const employees =
+    type === 'department' ? EMPLOYEES.filter((e) => e.dept === item.id) :
+    type === 'position' ? EMPLOYEES.filter((e) => e.position === item.id) :
+    type === 'location' ? EMPLOYEES.filter((e) => e.loc === item.id) : [];
+
+  return (
+    <Sheet open={!!detail} onClose={onClose} width={560}>
+      <div className="p-5 border-b border-border-soft">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-fg font-semibold">Company · {type}</div>
+            <h2 className="text-[18px] font-semibold mt-1 truncate">{title}</h2>
+            <div className="text-[12px] text-muted-fg font-mono mt-1">{item.id || item.date || item.registration}</div>
+          </div>
+          <Button variant="ghost" size="icon-sm" onClick={onClose}><I.X size={13} /></Button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          <div className="rounded-lg border border-border-soft bg-card px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-muted-fg font-semibold">Status</div>
+            <div className="mt-1 text-[16px] font-semibold capitalize">{item.status || 'Active'}</div>
+          </div>
+          <div className="rounded-lg border border-border-soft bg-card px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-muted-fg font-semibold">Employees</div>
+            <div className="mt-1 text-[16px] font-semibold tabular-nums">{item.employees ?? employees.length ?? 0}</div>
+          </div>
+          <div className="rounded-lg border border-border-soft bg-card px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-muted-fg font-semibold">Audit</div>
+            <div className="mt-1 text-[16px] font-semibold">On</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scroll-thin p-5 space-y-4">
+        <Card>
+          <CardHeader><CardTitle>Details</CardTitle></CardHeader>
+          <CardBody className="space-y-3">
+            {type === 'entity' && (
+              <>
+                <DetailRow icon={<I.Building size={13} />} label="Legal registration">{item.registration}</DetailRow>
+                <DetailRow icon={<I.Hash size={13} />} label="Tax ID">{item.tax_id}</DetailRow>
+                <DetailRow icon={<I.MapPin size={13} />} label="Address">{item.address}</DetailRow>
+                <DetailRow icon={<I.Globe size={13} />} label="Country / currency">{item.country} · {item.currency} · fiscal {item.fiscal}</DetailRow>
+              </>
+            )}
+            {type === 'department' && (
+              <>
+                <DetailRow icon={<I.Sitemap size={13} />} label="Parent">{item.parent ? deptName(item.parent) : 'Top level'}</DetailRow>
+                <DetailRow icon={<I.Users size={13} />} label="Headcount">{item.headcount} planned · {employees.length} assigned employees</DetailRow>
+                <DetailRow icon={<I.Hash size={13} />} label="Cost center">CC-{item.id.slice(1).padStart(3, '0')}</DetailRow>
+              </>
+            )}
+            {type === 'position' && (
+              <>
+                <DetailRow icon={<I.Briefcase size={13} />} label="Department">{deptName(item.dept)}</DetailRow>
+                <DetailRow icon={<I.Tag size={13} />} label="Grade">{item.grade}</DetailRow>
+                <DetailRow icon={<I.Users size={13} />} label="Assigned">{employees.length} employee{employees.length === 1 ? '' : 's'}</DetailRow>
+              </>
+            )}
+            {type === 'location' && (
+              <>
+                <DetailRow icon={<I.MapPin size={13} />} label="City">{item.city}</DetailRow>
+                <DetailRow icon={<I.Globe size={13} />} label="Country / timezone">{item.country} · {item.tz}</DetailRow>
+                <DetailRow icon={<I.Users size={13} />} label="Employees">{employees.length} assigned</DetailRow>
+              </>
+            )}
+            {type === 'holiday' && (
+              <>
+                <DetailRow icon={<I.Calendar size={13} />} label="Date">{item.date}</DetailRow>
+                <DetailRow icon={<I.Globe size={13} />} label="Country">{item.country}</DetailRow>
+                <DetailRow icon={<I.Clock size={13} />} label="Deduction rule">{item.halfDay ? 'Half-day holiday' : 'Full public holiday'}</DetailRow>
+              </>
+            )}
+            {type === 'transfer' && (
+              <>
+                <DetailRow icon={<I.Users size={13} />} label="Employee">{empById(item.emp)?.first} {empById(item.emp)?.last}</DetailRow>
+                <DetailRow icon={<I.ArrowRight size={13} />} label="Route">{COMPANIES.find((c) => c.id === item.from)?.short} to {COMPANIES.find((c) => c.id === item.to)?.short}</DetailRow>
+                <DetailRow icon={<I.Calendar size={13} />} label="Effective">{item.effective}</DetailRow>
+                <DetailRow icon={<I.Doc size={13} />} label="Visa / permit">{item.visa}</DetailRow>
+              </>
+            )}
+          </CardBody>
+        </Card>
+
+        {employees.length > 0 && (
+          <Card>
+            <CardHeader><CardTitle>Assigned employees</CardTitle></CardHeader>
+            <div className="border-t border-border">
+              {employees.slice(0, 6).map((e) => (
+                <div key={e.id} className="px-4 py-3 border-b border-border last:border-0 flex items-center gap-2.5">
+                  <Avatar name={`${e.first} ${e.last}`} hue={e.hue} size={28} />
+                  <div className="min-w-0">
+                    <div className="text-[12.5px] font-medium truncate">{e.first} {e.last}</div>
+                    <div className="text-[11px] text-muted-fg font-mono">{e.code}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-border-soft flex items-center justify-between gap-2">
+        <Button variant="ghost" size="md" onClick={onClose}>Close</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="md" onClick={() => onAction(type, item, 'export')}><I.Download size={13} />Export</Button>
+          <Button size="md" onClick={() => onEdit(type, item)}><I.Edit size={13} />Edit</Button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+function CompanyEditDialog({ edit, onClose, onSave }) {
+  const [form, setForm] = useState({});
+  const open = !!edit;
+  const type = edit?.type;
+
+  useEffect(() => { if (open) setForm({ ...edit.item }); }, [open, edit]);
+  if (!open) return null;
+
+  const title =
+    type === 'entity' ? 'Edit legal entity' :
+    type === 'department' ? 'Edit department' :
+    type === 'position' ? 'Edit position' :
+    type === 'location' ? 'Edit location' :
+    type === 'holiday' ? 'Edit holiday' :
+    type === 'transfer' ? 'Update transfer' :
+    'Edit item';
+  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  return (
+    <Dialog open={open} onClose={onClose} width={560}>
+      <FormHeader eyebrow="Company · Update" title={title} sub="Changes are saved to the local seed store and audit logged." onClose={onClose} />
+      <div className="p-5 space-y-3.5">
+        {type === 'entity' && (
+          <>
+            <FormField label="Legal name" required><Input value={form.name || ''} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="Short name"><Input value={form.short || ''} onChange={(e) => update('short', e.target.value)} /></FormField>
+              <FormField label="Status">
+                <Select value={form.status || 'active'} onChange={(e) => update('status', e.target.value)}>
+                  <option value="primary">Primary</option><option value="active">Active</option><option value="setup">In setup</option><option value="archived">Archived</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+            <FormGrid>
+              <FormField label="Country"><Input value={form.country || ''} onChange={(e) => update('country', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Currency"><Input value={form.currency || ''} onChange={(e) => update('currency', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Address"><Input value={form.address || ''} onChange={(e) => update('address', e.target.value)} /></FormField>
+          </>
+        )}
+        {type === 'department' && (
+          <>
+            <FormField label="Name" required><Input value={form.name || ''} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="Parent">
+                <Select value={form.parent || ''} onChange={(e) => update('parent', e.target.value || null)}>
+                  <option value="">Top level</option>
+                  {DEPARTMENTS.filter((d) => d.id !== form.id && !d.parent).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Planned headcount"><Input type="number" value={form.headcount ?? 0} onChange={(e) => update('headcount', +e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+          </>
+        )}
+        {type === 'position' && (
+          <>
+            <FormField label="Title" required><Input value={form.title || ''} onChange={(e) => update('title', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="Department">
+                <Select value={form.dept || 'd1'} onChange={(e) => update('dept', e.target.value)}>
+                  {DEPARTMENTS.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Grade">
+                <Select value={form.grade || 'L3'} onChange={(e) => update('grade', e.target.value)}>
+                  <option>L1</option><option>L2</option><option>L3</option><option>L4</option><option>L5</option><option>M1</option><option>M2</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+          </>
+        )}
+        {type === 'location' && (
+          <>
+            <FormField label="Name" required><Input value={form.name || ''} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <FormGrid>
+              <FormField label="City"><Input value={form.city || ''} onChange={(e) => update('city', e.target.value)} /></FormField>
+              <FormField label="Country"><Input value={form.country || ''} onChange={(e) => update('country', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Timezone"><Input value={form.tz || ''} onChange={(e) => update('tz', e.target.value)} className="font-mono" /></FormField>
+          </>
+        )}
+        {type === 'holiday' && (
+          <>
+            <FormGrid>
+              <FormField label="Date"><Input type="date" value={form.date || ''} onChange={(e) => update('date', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Country"><Input value={form.country || ''} onChange={(e) => update('country', e.target.value)} className="font-mono" /></FormField>
+            </FormGrid>
+            <FormField label="Name" required><Input value={form.name || ''} onChange={(e) => update('name', e.target.value)} autoFocus /></FormField>
+            <label className="flex items-center gap-2 text-[12.5px] cursor-pointer">
+              <input type="checkbox" checked={!!form.halfDay} onChange={(e) => update('halfDay', e.target.checked)} className="accent-current" />
+              <span>Half-day holiday</span>
+            </label>
+          </>
+        )}
+        {type === 'transfer' && (
+          <>
+            <FormGrid>
+              <FormField label="Effective"><Input type="date" value={form.effective || ''} onChange={(e) => update('effective', e.target.value)} className="font-mono" /></FormField>
+              <FormField label="Status">
+                <Select value={form.status || 'pending'} onChange={(e) => update('status', e.target.value)}>
+                  <option value="pending">Pending</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
+                </Select>
+              </FormField>
+            </FormGrid>
+            <FormField label="Compensation"><Input value={form.salary_change || ''} onChange={(e) => update('salary_change', e.target.value)} /></FormField>
+            <FormField label="Visa / permit"><Input value={form.visa || ''} onChange={(e) => update('visa', e.target.value)} /></FormField>
+          </>
+        )}
+      </div>
+      <FormFooter>
+        <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+        <Button size="md" onClick={() => onSave(type, edit.item, form)}><I.Check size={13} />Save changes</Button>
+      </FormFooter>
+    </Dialog>
+  );
+}
+
+function Departments({ onView, onEdit, onArchive }) {
+  const [menu, setMenu] = useState(null);
   return (
     <Card>
       <Table>
@@ -54,7 +327,7 @@ function Departments() {
         </THead>
         <tbody>
           {DEPARTMENTS.map((d) => (
-            <TR key={d.id}>
+            <TR key={d.id} className="cursor-pointer" onClick={() => onView('department', d)}>
               <TD>
                 <div className="flex items-center gap-2.5">
                   {d.parent && <span className="text-muted-fg ml-3">└</span>}
@@ -70,7 +343,10 @@ function Departments() {
               </TD>
               <TD className="text-right tabular-nums font-mono">{d.headcount}</TD>
               <TD className="text-[12px] text-muted-fg font-mono">CC-{d.id.slice(1).padStart(3, '0')}</TD>
-              <TD className="text-right"><Button variant="ghost" size="icon-sm"><I.More size={13} /></Button></TD>
+              <TD className="text-right relative">
+                <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setMenu(menu === d.id ? null : d.id); }}><I.More size={13} /></Button>
+                {menu === d.id && <ActionMenu item={d} type="department" onView={onView} onEdit={onEdit} onArchive={onArchive} />}
+              </TD>
             </TR>
           ))}
         </tbody>
@@ -79,11 +355,12 @@ function Departments() {
   );
 }
 
-function Positions() {
+function Positions({ onView, onEdit, onArchive }) {
+  const [menu, setMenu] = useState(null);
   return (
     <div className="grid grid-cols-2 gap-3">
       {POSITIONS.map((p) => (
-        <Card key={p.id}>
+        <Card key={p.id} className="cursor-pointer hover:bg-elevated transition-colors" onClick={() => onView('position', p)}>
           <div className="p-4 flex items-start justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1">
@@ -96,7 +373,10 @@ function Positions() {
                 {EMPLOYEES.filter((e) => e.position === p.id).length !== 1 ? 's' : ''}
               </div>
             </div>
-            <Button variant="ghost" size="icon-sm"><I.More size={13} /></Button>
+            <div className="relative">
+              <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setMenu(menu === p.id ? null : p.id); }}><I.More size={13} /></Button>
+              {menu === p.id && <ActionMenu item={p} type="position" onView={onView} onEdit={onEdit} onArchive={onArchive} />}
+            </div>
           </div>
         </Card>
       ))}
@@ -104,15 +384,20 @@ function Positions() {
   );
 }
 
-function Locations() {
+function Locations({ onView, onEdit, onArchive }) {
+  const [menu, setMenu] = useState(null);
   return (
     <div className="grid grid-cols-3 gap-3">
       {LOCATIONS.map((l) => (
-        <Card key={l.id}>
+        <Card key={l.id} className="cursor-pointer hover:bg-elevated transition-colors" onClick={() => onView('location', l)}>
           <div className="p-4">
             <div className="flex items-center justify-between mb-2.5">
               <div className="w-9 h-9 rounded bg-muted flex items-center justify-center"><I.MapPin size={15} /></div>
-              <Badge tone="outline" size="sm" className="font-mono">{l.country}</Badge>
+              <div className="flex items-center gap-1.5 relative">
+                <Badge tone="outline" size="sm" className="font-mono">{l.country}</Badge>
+                <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setMenu(menu === l.id ? null : l.id); }}><I.More size={13} /></Button>
+                {menu === l.id && <ActionMenu item={l} type="location" onView={onView} onEdit={onEdit} onArchive={onArchive} />}
+              </div>
             </div>
             <div className="text-[14px] font-semibold">{l.name}</div>
             <div className="text-[12px] text-muted-fg mt-0.5">{l.city}</div>
@@ -127,7 +412,8 @@ function Locations() {
   );
 }
 
-function Holidays() {
+function Holidays({ onView, onEdit, onArchive, onAction }) {
+  const [menu, setMenu] = useState(null);
   const upcoming = HOLIDAYS.filter((h) => new Date(h.date) >= TODAY);
   const past = HOLIDAYS.filter((h) => new Date(h.date) < TODAY);
   return (
@@ -138,7 +424,7 @@ function Holidays() {
             <CardTitle>Calendar — Thailand</CardTitle>
             <Badge tone="outline" size="sm" className="font-mono">TH · 2026</Badge>
           </div>
-          <Button size="sm" variant="outline"><I.Download size={12} />Import country pack</Button>
+          <Button size="sm" variant="outline" onClick={() => onAction('holiday', { id: 'TH-2026' }, 'import_country_pack')}><I.Download size={12} />Import country pack</Button>
         </CardHeader>
         <Table>
           <THead>
@@ -150,20 +436,23 @@ function Holidays() {
             {upcoming.map((h) => {
               const dt = new Date(h.date);
               return (
-                <TR key={h.date}>
+                <TR key={h.date} className="cursor-pointer" onClick={() => onView('holiday', h)}>
                   <TD className="font-mono text-[12.5px]">{h.date}</TD>
                   <TD className="text-[12.5px]">{dt.toLocaleString('en', { weekday: 'long' })}</TD>
                   <TD className="text-[13px] font-medium">{h.name}</TD>
                   <TD><Badge tone="outline" size="sm" className="font-mono">{h.country}</Badge></TD>
                   <TD><Badge tone="accent" size="sm">Public</Badge></TD>
-                  <TD className="text-right"><Button variant="ghost" size="icon-sm"><I.More size={13} /></Button></TD>
+                  <TD className="text-right relative">
+                    <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setMenu(menu === h.date ? null : h.date); }}><I.More size={13} /></Button>
+                    {menu === h.date && <ActionMenu item={h} type="holiday" onView={onView} onEdit={onEdit} onArchive={onArchive} />}
+                  </TD>
                 </TR>
               );
             })}
             {past.map((h) => {
               const dt = new Date(h.date);
               return (
-                <TR key={h.date} className="opacity-50">
+                <TR key={h.date} className="opacity-50 cursor-pointer" onClick={() => onView('holiday', h)}>
                   <TD className="font-mono text-[12.5px]">{h.date}</TD>
                   <TD className="text-[12.5px]">{dt.toLocaleString('en', { weekday: 'long' })}</TD>
                   <TD className="text-[13px] font-medium">{h.name}</TD>
@@ -180,7 +469,8 @@ function Holidays() {
   );
 }
 
-function Entities() {
+function Entities({ onView, onEdit, onArchive, onAction }) {
+  const [menu, setMenu] = useState(null);
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-3">
@@ -200,7 +490,7 @@ function Entities() {
         </CardHeader>
         <div className="border-t border-border">
           {COMPANIES.map((c) => (
-            <div key={c.id} className="px-4 py-3.5 border-b border-border last:border-0 flex items-center gap-3.5">
+            <div key={c.id} className="px-4 py-3.5 border-b border-border last:border-0 flex items-center gap-3.5 cursor-pointer hover:bg-elevated transition-colors" onClick={() => onView('entity', c)}>
               <div className="w-11 h-11 rounded border border-border bg-card flex flex-col items-center justify-center flex-none">
                 <div className="text-[9.5px] font-mono uppercase text-muted-fg leading-none">{c.country}</div>
                 <div className="text-[11px] font-mono font-semibold leading-tight">{c.currency}</div>
@@ -220,7 +510,10 @@ function Entities() {
                 <div className="text-right"><div className="text-[10px] uppercase tracking-wider text-muted-fg">Fiscal</div><div className="font-mono">{c.fiscal}</div></div>
                 <div className="text-right"><div className="text-[10px] uppercase tracking-wider text-muted-fg">Established</div><div className="font-mono">{c.established.slice(0, 7)}</div></div>
               </div>
-              <Button variant="ghost" size="icon-sm"><I.More size={13} /></Button>
+              <div className="relative">
+                <Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); setMenu(menu === c.id ? null : c.id); }}><I.More size={13} /></Button>
+                {menu === c.id && <ActionMenu item={c} type="entity" onView={onView} onEdit={onEdit} onArchive={onArchive} />}
+              </div>
             </div>
           ))}
         </div>
@@ -252,10 +545,10 @@ function Entities() {
           <CardHeader><CardTitle>Consolidated view</CardTitle><Badge tone="outline">Super admin</Badge></CardHeader>
           <CardBody className="space-y-2 text-[12.5px]">
             <div className="text-muted-fg mb-2">Cross-entity rollups for board, finance, and group HR.</div>
-            <Button size="sm" variant="outline" className="w-full"><I.TrendingUp size={11} />Group headcount report</Button>
-            <Button size="sm" variant="outline" className="w-full"><I.Hash size={11} />Consolidated payroll register</Button>
-            <Button size="sm" variant="outline" className="w-full"><I.Sitemap size={11} />Group org chart</Button>
-            <Button size="sm" variant="outline" className="w-full"><I.Download size={11} />Annual group disclosure pack</Button>
+            <Button size="sm" variant="outline" className="w-full" onClick={() => onAction('entity', { id: 'group' }, 'headcount_report')}><I.TrendingUp size={11} />Group headcount report</Button>
+            <Button size="sm" variant="outline" className="w-full" onClick={() => onAction('entity', { id: 'group' }, 'payroll_register')}><I.Hash size={11} />Consolidated payroll register</Button>
+            <Button size="sm" variant="outline" className="w-full" onClick={() => onAction('entity', { id: 'group' }, 'org_chart')}><I.Sitemap size={11} />Group org chart</Button>
+            <Button size="sm" variant="outline" className="w-full" onClick={() => onAction('entity', { id: 'group' }, 'disclosure_pack')}><I.Download size={11} />Annual group disclosure pack</Button>
           </CardBody>
         </Card>
       </div>
@@ -263,12 +556,12 @@ function Entities() {
   );
 }
 
-function InterCompany() {
-  const transfers = [
+function InterCompany({ onView, onEdit, onArchive, onAction }) {
+  const [transfers] = useState([
     { id: 'ict1', emp: 'e003', from: 'c1', to: 'c2', effective: '2026-01-10', status: 'completed', tenure_preserved: true, salary_change: 'Adjusted to SGD market', visa: 'EP issued · sponsored' },
     { id: 'ict2', emp: 'e004', from: 'c1', to: 'c3', effective: '2026-04-15', status: 'completed', tenure_preserved: true, salary_change: 'Cost-of-living uplift +18%', visa: 'Remote — no visa needed' },
     { id: 'ict3', emp: 'e006', from: 'c1', to: 'c4', effective: '2026-07-01', status: 'pending', tenure_preserved: true, salary_change: 'Pending compensation review', visa: 'Work permit in progress' },
-  ];
+  ]);
   return (
     <div className="space-y-4">
       <Card>
@@ -277,7 +570,7 @@ function InterCompany() {
             <CardTitle>Inter-company transfers</CardTitle>
             <Caption className="mt-0.5">Move an employee between entities. Employment history is preserved; statutory and payroll switch over.</Caption>
           </div>
-          <Button size="md"><I.Plus size={13} />New transfer</Button>
+          <Button size="md" onClick={() => onAction('transfer', { id: 'new' }, 'new_transfer')}><I.Plus size={13} />New transfer</Button>
         </CardHeader>
         <Table>
           <THead>
@@ -292,7 +585,7 @@ function InterCompany() {
               const from = COMPANIES.find((c) => c.id === t.from);
               const to = COMPANIES.find((c) => c.id === t.to);
               return (
-                <TR key={t.id}>
+                <TR key={t.id} className="cursor-pointer" onClick={() => onView('transfer', t)}>
                   <TD>
                     <div className="flex items-center gap-2.5">
                       <Avatar name={`${e.first} ${e.last}`} hue={e.hue} size={26} />
@@ -314,7 +607,7 @@ function InterCompany() {
                     {t.status === 'completed' && <Badge tone="ok"><I.Check size={9} />Completed</Badge>}
                     {t.status === 'pending' && <Badge tone="warn"><I.Clock size={9} />Pending</Badge>}
                   </TD>
-                  <TD className="text-right"><Button variant="ghost" size="icon-sm"><I.More size={13} /></Button></TD>
+                  <TD className="text-right"><Button variant="ghost" size="icon-sm" onClick={(e) => { e.stopPropagation(); onEdit('transfer', t); }}><I.Edit size={12} /></Button></TD>
                 </TR>
               );
             })}
@@ -355,7 +648,7 @@ function InterCompany() {
   );
 }
 
-function Branding() {
+function Branding({ onAction }) {
   const [entity, setEntity] = useState('c1');
   const c = COMPANIES.find((x) => x.id === entity);
   return (
@@ -375,8 +668,8 @@ function Branding() {
               <div className="text-[11px] text-muted-fg font-mono">PNG · 512×512 · 12 KB</div>
             </div>
             <div className="flex gap-1.5">
-              <Button size="sm" variant="outline" className="flex-1"><I.Plus size={11} />Replace</Button>
-              <Button size="sm" variant="ghost"><I.X size={11} /></Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => onAction('branding', c, 'replace_logo')}><I.Plus size={11} />Replace</Button>
+              <Button size="sm" variant="ghost" onClick={() => onAction('branding', c, 'remove_logo')}><I.X size={11} /></Button>
             </div>
           </CardBody>
         </Card>
@@ -391,6 +684,7 @@ function Branding() {
                     key={i}
                     className={cn('w-9 h-9 rounded ring-2 cursor-pointer', i === 0 ? 'ring-fg/40' : 'ring-transparent hover:ring-fg/20')}
                     style={{ background: color }}
+                    onClick={() => onAction('branding', c, 'primary_color', { color })}
                   />
                 ))}
               </div>
@@ -403,6 +697,7 @@ function Branding() {
                     key={i}
                     className={cn('w-9 h-9 rounded ring-2 cursor-pointer', i === 0 ? 'ring-fg/40' : 'ring-transparent')}
                     style={{ background: color }}
+                    onClick={() => onAction('branding', c, 'accent_color', { color })}
                   />
                 ))}
               </div>
@@ -439,7 +734,7 @@ function Branding() {
       <Card>
         <CardHeader>
           <CardTitle>Document templates</CardTitle>
-          <Button size="sm" variant="outline"><I.Plus size={11} />New template</Button>
+          <Button size="sm" variant="outline" onClick={() => onAction('template', c, 'new_template')}><I.Plus size={11} />New template</Button>
         </CardHeader>
         <Table>
           <THead>
@@ -466,7 +761,7 @@ function Branding() {
                   </div>
                 </TD>
                 <TD className="font-mono text-[12px] text-muted-fg">{edited}</TD>
-                <TD className="text-right"><Button variant="ghost" size="icon-sm"><I.Edit size={12} /></Button></TD>
+                <TD className="text-right"><Button variant="ghost" size="icon-sm" onClick={() => onAction('template', { id: name, name }, 'edit_template')}><I.Edit size={12} /></Button></TD>
               </TR>
             ))}
           </tbody>
@@ -484,7 +779,7 @@ const WORKING_HOUR_POLICIES = [
   { id: 'wh5', name: 'Part-time 4d', hours: 'Mon–Thu 09:00–18:00', weekly: '32h', break: '60min', applied: 0 },
 ];
 
-function WorkingHours() {
+function WorkingHours({ onAction }) {
   return (
     <div className="space-y-4">
       <Card>
@@ -493,7 +788,7 @@ function WorkingHours() {
             <CardTitle>Working hour policies</CardTitle>
             <Caption>Assigned per employee, department, or position. Resolution order: employee → position → department.</Caption>
           </div>
-          <Button size="sm" variant="outline"><I.Plus size={11} />New policy</Button>
+          <Button size="sm" variant="outline" onClick={() => onAction('working_hours', { id: 'new' }, 'new_policy')}><I.Plus size={11} />New policy</Button>
         </CardHeader>
         <Table>
           <THead>
@@ -512,7 +807,7 @@ function WorkingHours() {
                 <TD className="text-right font-mono tabular-nums">
                   {p.applied} {p.applied === 1 ? 'person' : 'people'}
                 </TD>
-                <TD className="text-right"><Button variant="ghost" size="icon-sm"><I.Edit size={12} /></Button></TD>
+                <TD className="text-right"><Button variant="ghost" size="icon-sm" onClick={() => onAction('working_hours', p, 'edit_policy')}><I.Edit size={12} /></Button></TD>
               </TR>
             ))}
           </tbody>
@@ -530,7 +825,7 @@ function WorkingHours() {
                   <div className="text-[13px] font-medium">{s.name}</div>
                   <div className="text-[11px] font-mono text-muted-fg">{s.from}–{s.to} · break {s.break}min</div>
                 </div>
-                <Button variant="ghost" size="icon-sm"><I.Edit size={12} /></Button>
+                <Button variant="ghost" size="icon-sm" onClick={() => onAction('shift', s, 'edit_shift')}><I.Edit size={12} /></Button>
               </div>
             ))}
           </CardBody>
@@ -549,13 +844,13 @@ function WorkingHours() {
   );
 }
 
-function MasterData() {
+function MasterData({ onAction }) {
   return (
     <div className="grid grid-cols-2 gap-4">
       <Card>
         <CardHeader>
           <CardTitle>Currencies</CardTitle>
-          <Button size="sm" variant="outline"><I.Plus size={11} />Add</Button>
+          <Button size="sm" variant="outline" onClick={() => onAction('currency', { id: 'new' }, 'add_currency')}><I.Plus size={11} />Add</Button>
         </CardHeader>
         <Table>
           <THead>
@@ -583,7 +878,7 @@ function MasterData() {
       <Card>
         <CardHeader>
           <CardTitle>Banks</CardTitle>
-          <Button size="sm" variant="outline"><I.Plus size={11} />Add</Button>
+          <Button size="sm" variant="outline" onClick={() => onAction('bank', { id: 'new' }, 'add_bank')}><I.Plus size={11} />Add</Button>
         </CardHeader>
         <Table>
           <THead>
@@ -646,7 +941,7 @@ function MasterData() {
               <div className="text-[13px]">{d.name}</div>
               <div className="flex items-center gap-2">
                 <span className="text-[11.5px] font-mono text-muted-fg tabular-nums">{d.items} values</span>
-                <Button variant="ghost" size="icon-sm"><I.Edit size={12} /></Button>
+                <Button variant="ghost" size="icon-sm" onClick={() => onAction('dropdown', d, 'edit_dropdown')}><I.Edit size={12} /></Button>
               </div>
             </div>
           ))}
@@ -656,10 +951,119 @@ function MasterData() {
   );
 }
 
+function NewEntityDialog({ open, onClose }) {
+  const { toast, logAudit, bump } = useStore();
+  const [form, setForm] = useState({
+    name: '',
+    short: '',
+    registration: '',
+    country: 'TH',
+    currency: 'THB',
+    tax_id: '',
+    fiscal: 'Jan-Dec',
+    established: '2026-05-20',
+    address: '',
+  });
+  useEffect(() => {
+    if (!open) {
+      setForm({ name: '', short: '', registration: '', country: 'TH', currency: 'THB', tax_id: '', fiscal: 'Jan-Dec', established: '2026-05-20', address: '' });
+    }
+  }, [open]);
+  const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const valid = form.name.trim() && form.short.trim() && form.registration.trim();
+  const submit = () => {
+    if (!valid) return;
+    const id = 'c' + (COMPANIES.length + 1);
+    const entity = { id, ...form, employees: 0, status: 'setup' };
+    COMPANIES.unshift(entity);
+    logAudit({ action: 'company.entity.create', entity: `company:${id}`, meta: { name: form.name, country: form.country } });
+    bump();
+    toast(`Entity created — ${form.short}`);
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} width={620}>
+      <FormHeader eyebrow="Company · Legal entity" title="New legal entity" sub="Creates an entity shell for payroll, statutory setup, and company scoping." onClose={onClose} />
+      <div className="p-5 space-y-3.5">
+        <FormField label="Legal name" required><Input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Mercury Labs Malaysia Sdn. Bhd." autoFocus /></FormField>
+        <FormGrid>
+          <FormField label="Short name" required><Input value={form.short} onChange={(e) => update('short', e.target.value)} placeholder="Mercury MY" /></FormField>
+          <FormField label="Registration" required><Input value={form.registration} onChange={(e) => update('registration', e.target.value)} className="font-mono" /></FormField>
+        </FormGrid>
+        <FormGrid>
+          <FormField label="Country"><Input value={form.country} onChange={(e) => update('country', e.target.value)} className="font-mono" /></FormField>
+          <FormField label="Currency"><Input value={form.currency} onChange={(e) => update('currency', e.target.value)} className="font-mono" /></FormField>
+        </FormGrid>
+        <FormGrid>
+          <FormField label="Tax ID"><Input value={form.tax_id} onChange={(e) => update('tax_id', e.target.value)} className="font-mono" /></FormField>
+          <FormField label="Established"><Input type="date" value={form.established} onChange={(e) => update('established', e.target.value)} className="font-mono" /></FormField>
+        </FormGrid>
+        <FormField label="Address"><Input value={form.address} onChange={(e) => update('address', e.target.value)} /></FormField>
+      </div>
+      <FormFooter>
+        <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+        <Button size="md" disabled={!valid} onClick={submit}><I.Plus size={13} />Create entity</Button>
+      </FormFooter>
+    </Dialog>
+  );
+}
+
+function CompanyActionDialog({ action, onClose, onSubmit }) {
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [notes, setNotes] = useState('');
+  useEffect(() => {
+    if (action) {
+      setName(action.item?.name || action.item?.title || '');
+      setCode(action.item?.id || '');
+      setNotes('');
+    }
+  }, [action]);
+  if (!action) return null;
+  const label = action.action.replaceAll('_', ' ');
+  const title = label.charAt(0).toUpperCase() + label.slice(1);
+  const isAdd = action.action.startsWith('new') || action.action.startsWith('add');
+
+  return (
+    <Dialog open onClose={onClose} width={500}>
+      <FormHeader eyebrow={`Company · ${action.type}`} title={title} sub="Records the requested company configuration change and writes an audit event." onClose={onClose} />
+      <div className="p-5 space-y-3.5">
+        <FormField label={isAdd ? 'Name' : 'Item'} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </FormField>
+        <FormGrid>
+          <FormField label="Code / reference">
+            <Input value={code} onChange={(e) => setCode(e.target.value)} className="font-mono" />
+          </FormField>
+          <FormField label="Status">
+            <Select defaultValue="active">
+              <option value="active">Active</option>
+              <option value="draft">Draft</option>
+              <option value="pending">Pending approval</option>
+            </Select>
+          </FormField>
+        </FormGrid>
+        <FormField label="Notes">
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Owner, effective date, rollout note..." />
+        </FormField>
+      </div>
+      <FormFooter>
+        <Button variant="ghost" size="md" onClick={onClose}>Cancel</Button>
+        <Button size="md" onClick={() => onSubmit({ name, code, notes })}><I.Check size={13} />Save</Button>
+      </FormFooter>
+    </Dialog>
+  );
+}
+
 export function Company({ params, onNav }) {
   const tab = params?.tab || 'departments';
   const setTab = (t) => onNav('company', null, { tab: t });
   const [dlg, setDlg] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const [action, setAction] = useState(null);
+  const { toast, logAudit, bump } = useStore();
 
   const buttonLabel =
     tab === 'departments' ? 'New department' :
@@ -669,6 +1073,38 @@ export function Company({ params, onNav }) {
     tab === 'entities' ? 'New entity' : 'New';
   const openDlg = () => setDlg(tab === 'entities' ? 'entity' : tab);
   const hideAction = ['master', 'hours', 'transfers', 'branding'].includes(tab);
+  const viewItem = (type, item) => setDetail({ type, item });
+  const editItem = (type, item) => {
+    setDetail(null);
+    setEdit({ type, item });
+  };
+  const actionItem = (type, item, action, meta = {}) => {
+    if (/^(new|add|edit|replace)/.test(action)) {
+      setAction({ type, item, action, meta });
+      return;
+    }
+    logAudit({ action: `company.${type}.${action}`, entity: `${type}:${item.id || item.date || 'new'}`, meta });
+    toast(`${action.replaceAll('_', ' ')} — ${item.name || item.title || item.id || item.date || type}`);
+  };
+  const submitAction = (values) => {
+    if (!action) return;
+    logAudit({
+      action: `company.${action.type}.${action.action}`,
+      entity: `${action.type}:${values.code || action.item.id || 'new'}`,
+      meta: { ...action.meta, ...values },
+    });
+    toast(`${action.action.replaceAll('_', ' ')} saved — ${values.name || action.type}`);
+    setAction(null);
+  };
+  const archiveItem = (type, item) => actionItem(type, item, 'archive');
+  const saveItem = (type, item, form) => {
+    Object.assign(item, form);
+    if (type === 'holiday') HOLIDAYS.sort((a, b) => a.date.localeCompare(b.date));
+    logAudit({ action: `company.${type}.update`, entity: `${type}:${item.id || item.date}`, meta: { name: form.name || form.title || form.id } });
+    bump();
+    toast(`${type} updated`);
+    setEdit(null);
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg">
@@ -703,20 +1139,24 @@ export function Company({ params, onNav }) {
         />
       </div>
       <div className="flex-1 overflow-y-auto scroll-thin p-6">
-        {tab === 'entities' && <Entities />}
-        {tab === 'departments' && <Departments />}
-        {tab === 'positions' && <Positions />}
-        {tab === 'locations' && <Locations />}
-        {tab === 'hours' && <WorkingHours />}
-        {tab === 'holidays' && <Holidays />}
-        {tab === 'master' && <MasterData />}
-        {tab === 'transfers' && <InterCompany />}
-        {tab === 'branding' && <Branding />}
+        {tab === 'entities' && <Entities onView={viewItem} onEdit={editItem} onArchive={archiveItem} onAction={actionItem} />}
+        {tab === 'departments' && <Departments onView={viewItem} onEdit={editItem} onArchive={archiveItem} />}
+        {tab === 'positions' && <Positions onView={viewItem} onEdit={editItem} onArchive={archiveItem} />}
+        {tab === 'locations' && <Locations onView={viewItem} onEdit={editItem} onArchive={archiveItem} />}
+        {tab === 'hours' && <WorkingHours onAction={actionItem} />}
+        {tab === 'holidays' && <Holidays onView={viewItem} onEdit={editItem} onArchive={archiveItem} onAction={actionItem} />}
+        {tab === 'master' && <MasterData onAction={actionItem} />}
+        {tab === 'transfers' && <InterCompany onView={viewItem} onEdit={editItem} onArchive={archiveItem} onAction={actionItem} />}
+        {tab === 'branding' && <Branding onAction={actionItem} />}
       </div>
       <NewDepartmentDialog open={dlg === 'departments'} onClose={() => setDlg(null)} />
       <NewPositionDialog open={dlg === 'positions'} onClose={() => setDlg(null)} />
       <NewLocationDialog open={dlg === 'locations'} onClose={() => setDlg(null)} />
       <NewHolidayDialog open={dlg === 'holidays'} onClose={() => setDlg(null)} />
+      <NewEntityDialog open={dlg === 'entity'} onClose={() => setDlg(null)} />
+      <CompanyDetailSheet detail={detail} onClose={() => setDetail(null)} onEdit={editItem} onAction={actionItem} />
+      <CompanyEditDialog edit={edit} onClose={() => setEdit(null)} onSave={saveItem} />
+      <CompanyActionDialog action={action} onClose={() => setAction(null)} onSubmit={submitAction} />
     </div>
   );
 }
