@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Professional HRMS palette: cool gray foundation with blue as the system accent. */
+  --bg:          0.970 0.010 250;
+  --surface:    0.940 0.016 250;
+  --card:        1     0     0;
+  --elevated:    1     0     0;
+  --muted:       0.928 0.016 250;
+  --muted-fg:    0.48  0.030 250;
+  --subtle:      0.910 0.018 250;
+  --fg:          0.22  0.035 255;
+  --fg-soft:     0.34  0.032 255;
+  --border:      0.875 0.020 250;
+  --border-soft: 0.895 0.018 250;
+  --ring:        0.58  0.18  255;
+  --accent:      0.55  0.20  255;
+  --accent-fg:   0.99  0.005 255;
+  --accent-soft: 0.95  0.04  255;
+  --danger:      0.6   0.2   25;
+  --warn:        0.72  0.16  75;
+  --ok:          0.65  0.13  165;
+  --info:        0.65  0.13  240;
+  --radius:      8px;
+
+  --shadow-sm:   0 1px 0 0 oklch(0.22 0.035 255 / 0.05);
+  --shadow:      0 1px 2px -1px oklch(0.22 0.035 255 / 0.08),
+                 0 8px 18px -14px oklch(0.22 0.035 255 / 0.18);
+  --shadow-lg:   0 8px 16px -10px oklch(0.22 0.035 255 / 0.18),
+                 0 24px 44px -24px oklch(0.22 0.035 255 / 0.24);
+}
+
+.dark {
+  --bg:          0.145 0.018 255;
+  --surface:    0.175 0.020 255;
+  --card:        0.205 0.020 255;
+  --elevated:    0.235 0.022 255;
+  --muted:       0.245 0.022 255;
+  --muted-fg:    0.68  0.030 255;
+  --subtle:      0.225 0.020 255;
+  --fg:          0.97  0.006 255;
+  --fg-soft:     0.84  0.014 255;
+  --border:      0.30  0.026 255;
+  --border-soft: 0.255 0.024 255;
+  --ring:        0.72  0.16  255;
+  --accent:      0.72  0.16  255;
+  --accent-fg:   0.15  0.02  255;
+  --accent-soft: 0.30  0.06  255;
+  --shadow-sm:   0 1px 0 0 oklch(0 0 0 / 0.30);
+  --shadow:      0 1px 2px -1px oklch(0 0 0 / 0.35),
+                 0 2px 6px -2px oklch(0 0 0 / 0.25);
+  --shadow-lg:   0 4px 8px -4px oklch(0 0 0 / 0.45),
+                 0 12px 24px -8px oklch(0 0 0 / 0.40);
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: 'Geist', system-ui, sans-serif;
+  background: oklch(var(--bg));
+  color: oklch(var(--fg));
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: 0;
+}
+
+/* Density modes */
+.density-compact { --row-py: 8px;  --pad: 12px; --gap: 8px;  }
+.density-comfy   { --row-py: 12px; --pad: 16px; --gap: 12px; }
+
+.focus-ring:focus-visible {
+  outline: 2px solid oklch(var(--ring) / 0.55);
+  outline-offset: 1px;
+}
+
+/* Thin scrollbars (light + dark aware) */
+.scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: oklch(var(--border));
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--muted-fg) / 0.45);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+}
+
+/* Motion */
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes fadeIn       { from { opacity: 0; }                 to { opacity: 1; } }
+@keyframes slideUp      { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes shimmer      { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+.anim-slide-r  { animation: slideInRight 240ms cubic-bezier(.2,.8,.2,1); }
+.anim-fade     { animation: fadeIn 200ms ease; }
+.anim-slide-up { animation: slideUp 200ms cubic-bezier(.2,.8,.2,1); }
+
+@keyframes caretBlink { 50% { opacity: 0; } }
+.caret { animation: caretBlink 1s step-end infinite; }
+
+::selection { background: oklch(var(--accent) / 0.25); }
+
+/*
+  Dark-mode compatibility layer.
+  Several feature screens intentionally use Tailwind's `bg-white` to keep the
+  light theme crisp. In dark mode those hard-coded white surfaces need to map
+  back onto the design tokens so every page shares the same depth model.
+*/
+.dark .bg-white {
+  background-color: oklch(var(--card));
+}
+
+.dark .bg-white.dark\:bg-bg {
+  background-color: oklch(var(--bg));
+}
+
+.dark .bg-white.dark\:bg-card {
+  background-color: oklch(var(--card));
+}
+
+.dark .hover\:bg-white:hover {
+  background-color: oklch(var(--elevated));
+}
+
+.dark .bg-white\/60,
+.dark .bg-white\/65,
+.dark .bg-white\/70,
+.dark .bg-white\/80,
+.dark .bg-white\/90 {
+  background-color: oklch(var(--card) / 0.82);
+}
+
+.dark .border-white,
+.dark .border-white\/10,
+.dark .border-white\/20 {
+  border-color: oklch(var(--border-soft));
+}
+
+.dark .ring-white,
+.dark .ring-white\/10,
+.dark .ring-white\/20 {
+  --tw-ring-color: oklch(var(--border-soft));
+}
+
+/* Soft elevation utilities — backed by CSS vars so they adapt to dark mode */
+.shadow-soft     { box-shadow: var(--shadow); }
+.shadow-soft-sm  { box-shadow: var(--shadow-sm); }
+.shadow-soft-lg  { box-shadow: var(--shadow-lg); }
+
+/* Hairline border that adapts to theme */
+.hair { border-color: oklch(var(--border-soft)); }
+
+/* Numeric, mono-styled chip for things like KPIs and IDs */
+.chip-num {
+  font-feature-settings: 'tnum' on, 'cv11' on;
+  font-variant-numeric: tabular-nums;
+}
