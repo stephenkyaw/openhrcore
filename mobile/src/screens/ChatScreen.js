@@ -268,7 +268,7 @@ export function ChatScreen() {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
   }, []);
 
-  useEffect(() => { scrollToBottom(); }, [messages, typing]);
+  useEffect(() => { scrollToBottom(); }, [messages, typing, scrollToBottom]);
 
   const pushReply = useCallback((reply) => {
     setTyping(false);

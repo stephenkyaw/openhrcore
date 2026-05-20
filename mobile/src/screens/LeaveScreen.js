@@ -278,7 +278,7 @@ export function LeaveScreen() {
                       </Text>
                     </Row>
                     {req.reason ? (
-                      <Text style={styles.reasonText}>"{req.reason}"</Text>
+                      <Text style={styles.reasonText}>{req.reason}</Text>
                     ) : null}
                   </View>
                   <Row style={styles.approvalActions}>

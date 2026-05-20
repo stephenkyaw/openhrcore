@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../components/ui';
-import { colors, radius, shadow, shadowMd, spacing } from '../theme';
+import { colors, radius, shadowMd, spacing } from '../theme';
 
 export function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('saki@mercury.co');

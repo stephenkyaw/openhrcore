@@ -7,7 +7,7 @@ import {
 } from '../components/ui';
 import { WeeklyAttendanceChart } from '../components/charts';
 import { DateFieldButton, FormField, InlineDatePicker, TextFieldInput } from '../components/forms';
-import { colors, radius, spacing } from '../theme';
+import { colors, spacing } from '../theme';
 import { formatShortDate, todayStr } from '../utils/dates';
 import { useClock } from '../hooks/useClock';
 
@@ -109,7 +109,7 @@ export function AttendanceScreen() {
             <Row style={styles.clockBtns}>
               <Button
                 style={styles.clockBtn}
-                onPress={clockIn}
+                onPress={() => clockIn({ wfh })}
                 disabled={!canClockIn}
               >
                 {isOpen ? 'Shift active…' : 'Clock in'}
@@ -130,12 +130,12 @@ export function AttendanceScreen() {
             <Card>
               <Row>
                 <View style={styles.flex}>
-                  <Text style={styles.cardTitle}>Today's shift</Text>
+                  <Text style={styles.cardTitle}>{"Today's shift"}</Text>
                   <Text style={styles.cardSub}>
                     {today.in} – {today.out || 'active'}
                     {today.hours > 0 ? ` · ${today.hours}h` : ''}
                   </Text>
-                  {today.wfh && (
+                  {(today.wfh || (isOpen && wfh)) && (
                     <View style={styles.wfhTag}>
                       <Ionicons name="home-outline" size={11} color={colors.info} />
                       <Text style={styles.wfhText}>Work from home</Text>

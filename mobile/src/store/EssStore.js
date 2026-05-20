@@ -164,13 +164,13 @@ export function EssProvider({ children }) {
     showToast(decision === 'approved' ? 'Leave approved' : 'Leave rejected');
   }, [requests, showToast]);
 
-  const clockIn = useCallback(() => {
+  const clockIn = useCallback(({ wfh = false } = {}) => {
     const today = todayStr();
     const existing = attendance.find((a) => a.date === today && a.emp === currentUserId);
     if (existing?.in && !existing?.out) { showToast('Already clocked in'); return; }
     const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
     setAttendance((prev) => [
-      { id: `att-${today}-${currentUserId}`, emp: currentUserId, date: today, in: time, out: null, hours: 0, status: 'present', source: 'mobile', wfh: false },
+      { id: `att-${today}-${currentUserId}`, emp: currentUserId, date: today, in: time, out: null, hours: 0, status: 'present', source: 'mobile', wfh },
       ...prev.filter((a) => !(a.date === today && a.emp === currentUserId)),
     ]);
     showToast('Clocked in');
@@ -287,9 +287,9 @@ export function EssProvider({ children }) {
     markAllRead,
     toast,
   }), [
-    advances, alerts, attendance, balances, claims, corrections, docs,
+    advances, alerts, balances, claims, corrections, docs,
     employee, manager, monthSummary, myAttendance, myPayslips, myRequests,
-    overtime, pendingApprovals, requests, tasks, team, toast, upcomingLeave,
+    overtime, pendingApprovals, tasks, team, toast, upcomingLeave,
     weekAttendance, ytdEarnings,
     submitLeave, cancelLeave, decideLeave, clockIn, clockOut,
     submitCorrection, submitOvertime, submitReimbursement, submitAdvance,

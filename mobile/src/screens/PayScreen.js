@@ -7,7 +7,7 @@ import {
 } from '../components/ui';
 import { MonthlyPayChart } from '../components/charts';
 import { FormField, TextFieldInput } from '../components/forms';
-import { colors, radius, spacing } from '../theme';
+import { colors, spacing } from '../theme';
 import { formatMoney, formatShortDate } from '../utils/dates';
 
 function netPay(ps) {
