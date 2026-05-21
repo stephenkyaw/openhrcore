@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# Local dev stack: Postgres + FastAPI backend.
+#
+# pgAdmin is intentionally NOT included — you said you run it on the host.
+# Connect it to localhost:5432 with credentials below.
+#
+# Usage:
+#   docker compose up -d                 start everything
+#   docker compose logs -f api           tail backend logs
+#   docker compose exec api bash         shell into the backend container
+#   docker compose down                  stop (data persists in named volumes)
+#   docker compose down -v               stop AND wipe Postgres data
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: openhrcore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openhrcore
+      POSTGRES_PASSWORD: openhrcore
+      POSTGRES_DB: openhrcore
+    ports:
+      # Exposed to host so your local pgAdmin can connect.
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openhrcore -d openhrcore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      target: dev
+    container_name: openhrcore-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the DB is reachable as "db", not "localhost".
+      DATABASE_URL: postgresql+asyncpg://openhrcore:openhrcore@db:5432/openhrcore
+      APP_ENV: development
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+      BACKEND_CORS_ORIGINS: "http://localhost:5173,http://localhost:19006"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind-mount the source so uvicorn --reload picks up edits.
+      - ./backend:/app
+      # Override /app/.venv with a named volume so the container's venv
+      # (Linux, Python 3.14) is NOT clobbered by the host's .venv.
+      - api-venv:/app/.venv
+    command: >
+      sh -c "uv run alembic upgrade head &&
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:
+  api-venv:

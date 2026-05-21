@@ -1,0 +1,29 @@
+# Local Python state — never copy host venv/caches into the image.
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets
+.env
+.env.local
+.env.*.local
+
+# Git / IDE / OS
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Build artefacts
+dist/
+build/
+*.egg-info/
+
+# Logs / temp
+*.log
+*.sqlite3
