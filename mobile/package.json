@@ -9,8 +9,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "export:web": "expo export --platform web",
-    "check": "npm run lint && npm run export:web"
+    "check": "npm run typecheck && npm run lint && npm run export:web"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -25,7 +26,9 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/react": "^19.2.15",
     "eslint": "^9.0.0",
-    "eslint-config-expo": "~10.0.0"
+    "eslint-config-expo": "~10.0.0",
+    "typescript": "~5.9.3"
   }
 }

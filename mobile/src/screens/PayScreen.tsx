@@ -3,40 +3,48 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEss } from '../store/EssStore';
 import {
-  Badge, Button, Card, Chip, Divider, Empty, Row, Screen, SectionTitle,
+  AlertBanner, Badge, Button, Card, Chip, Divider, Empty, Row, Screen, SectionTitle,
 } from '../components/ui';
 import { MonthlyPayChart } from '../components/charts';
 import { FormField, TextFieldInput } from '../components/forms';
-import { colors, spacing } from '../theme';
+import { colors, font, radius, spacing } from '../theme';
 import { formatMoney, formatShortDate } from '../utils/dates';
+import type { Payslip, RequestStatus, Tone } from '../types';
 
-function netPay(ps) {
+function netPay(ps: Payslip): number {
   return ps.earnings.reduce((s, l) => s + l.amount, 0) - ps.deductions.reduce((s, l) => s + l.amount, 0);
 }
 
-function grossPay(ps) {
+function grossPay(ps: Payslip): number {
   return ps.earnings.reduce((s, l) => s + l.amount, 0);
 }
 
-function statusTone(s) {
+function statusTone(s: string): Tone {
   if (['approved', 'paid'].includes(s)) return 'success';
   if (s === 'pending') return 'warning';
   if (s === 'rejected') return 'danger';
   return 'neutral';
 }
 
-function PayLine({ label, amount, currency, negative }) {
+function PayLine({ label, amount, currency, negative }: { label: string; amount: number; currency: string; negative?: boolean }): React.ReactElement {
   return (
     <Row style={styles.payLine}>
       <Text style={styles.payLineLabel}>{label}</Text>
       <Text style={[styles.payLineAmt, negative && styles.deduction]}>
-        {negative ? '–' : ''}{formatMoney(amount, currency)}
+        {negative ? '–' : '+'}{formatMoney(amount, currency)}
       </Text>
     </Row>
   );
 }
 
-export function PayScreen() {
+function statusBorderColor(s: RequestStatus): string {
+  if (s === 'approved') return colors.success;
+  if (s === 'pending') return colors.warning;
+  if (s === 'rejected') return colors.danger;
+  return colors.border;
+}
+
+export function PayScreen(): React.ReactElement {
   const { payslips, reimbursements, salaryAdvances, submitAdvance, submitReimbursement, ytdEarnings } = useEss();
 
   const [view, setView] = useState('payslips');
@@ -46,17 +54,17 @@ export function PayScreen() {
   const [claimCat, setClaimCat] = useState('');
   const [claimAmt, setClaimAmt] = useState('');
   const [claimReason, setClaimReason] = useState('');
-  const [claimErrors, setClaimErrors] = useState({});
+  const [claimErrors, setClaimErrors] = useState<Record<string, string | null>>({});
 
   // Advance form
   const [advAmt, setAdvAmt] = useState('');
   const [advReason, setAdvReason] = useState('');
-  const [advErrors, setAdvErrors] = useState({});
+  const [advErrors, setAdvErrors] = useState<Record<string, string | null>>({});
 
   const selected = payslips.find((ps) => ps.id === selectedId) || payslips[0];
 
   const submitClaim = useCallback(() => {
-    const errs = {};
+    const errs: Record<string, string> = {};
     if (!claimCat.trim()) errs.claimCat = 'Enter a category';
     const n = Number(claimAmt);
     if (!n || n <= 0) errs.claimAmt = 'Enter a valid amount';
@@ -67,7 +75,7 @@ export function PayScreen() {
   }, [claimAmt, claimCat, claimReason, submitReimbursement]);
 
   const submitAdv = useCallback(() => {
-    const errs = {};
+    const errs: Record<string, string> = {};
     const n = Number(advAmt);
     if (!n || n <= 0) errs.advAmt = 'Enter a valid amount';
     if (!advReason.trim()) errs.advReason = 'Provide a reason for the advance';
@@ -77,16 +85,19 @@ export function PayScreen() {
     if (ok) { setAdvAmt(''); setAdvReason(''); setAdvErrors({}); }
   }, [advAmt, advReason, submitAdvance]);
 
+  const pendingClaims = reimbursements.filter((r) => r.status === 'pending').length;
+  const pendingAdvances = salaryAdvances.filter((a) => a.status === 'pending').length;
+
   return (
     <Screen>
       {/* View switcher */}
       <Row style={styles.tabRow}>
         {[
           { id: 'payslips', label: 'Payslips' },
-          { id: 'claims', label: 'Claims' },
-          { id: 'advances', label: 'Advances' },
+          { id: 'claims', label: 'Claims', count: pendingClaims },
+          { id: 'advances', label: 'Advances', count: pendingAdvances },
         ].map((t) => (
-          <Chip key={t.id} label={t.label} active={view === t.id} onPress={() => setView(t.id)} />
+          <Chip key={t.id} label={t.label} active={view === t.id} onPress={() => setView(t.id)} count={t.count} />
         ))}
       </Row>
 
@@ -96,27 +107,30 @@ export function PayScreen() {
           {ytdEarnings.months > 0 && (
             <>
               <SectionTitle title={`${new Date().getFullYear()} year to date`} />
-              <Card>
+              <Card elevated>
                 <Row style={styles.ytdRow}>
                   <View style={styles.ytdItem}>
                     <Text style={styles.ytdLabel}>Gross</Text>
                     <Text style={styles.ytdValue}>{formatMoney(ytdEarnings.gross, 'THB')}</Text>
+                    <Text style={styles.ytdSub}>{ytdEarnings.months} months</Text>
                   </View>
                   <View style={styles.ytdDivider} />
                   <View style={styles.ytdItem}>
                     <Text style={styles.ytdLabel}>Tax paid</Text>
                     <Text style={[styles.ytdValue, styles.ytdTax]}>{formatMoney(ytdEarnings.tax, 'THB')}</Text>
+                    <Text style={styles.ytdSub}>withheld</Text>
                   </View>
                   <View style={styles.ytdDivider} />
                   <View style={styles.ytdItem}>
-                    <Text style={styles.ytdLabel}>Net</Text>
+                    <Text style={styles.ytdLabel}>Net total</Text>
                     <Text style={[styles.ytdValue, styles.ytdNet]}>{formatMoney(ytdEarnings.net, 'THB')}</Text>
+                    <Text style={styles.ytdSub}>take-home</Text>
                   </View>
                 </Row>
+
                 {payslips.length > 1 && (
                   <>
-                    <Divider />
-                    <Text style={styles.chartTitle}>Monthly trend</Text>
+                    <Divider label="Monthly trend" />
                     <MonthlyPayChart payslips={payslips} />
                   </>
                 )}
@@ -126,65 +140,86 @@ export function PayScreen() {
 
           {/* Payslip list */}
           <SectionTitle title="Pay history" />
-          {payslips.map((ps) => (
-            <Pressable key={ps.id} onPress={() => setSelectedId(ps.id)}>
-              <Card style={[styles.psRow, selected?.id === ps.id && styles.psRowActive]}>
+          {payslips.map((ps) => {
+            const net = netPay(ps);
+            const isSelected = selected?.id === ps.id;
+            const hasBonus = ps.earnings.length > 3;
+            return (
+              <Card
+                key={ps.id}
+                onPress={() => setSelectedId(ps.id)}
+                style={isSelected ? styles.psRowActive : undefined}
+                accent={isSelected ? colors.primary : undefined}
+              >
                 <Row>
-                  <View>
-                    <Text style={styles.cardTitle}>{ps.period}</Text>
+                  <View style={styles.flex}>
+                    <Row style={styles.psHeader}>
+                      <Text style={styles.cardTitle}>{ps.period}</Text>
+                      {hasBonus && (
+                        <View style={styles.bonusTag}>
+                          <Ionicons name="star" size={10} color={colors.success} />
+                          <Text style={styles.bonusTagText}>Bonus</Text>
+                        </View>
+                      )}
+                    </Row>
                     <Text style={styles.cardSub}>Paid {formatShortDate(ps.payDate)}</Text>
-                    {ps.earnings.length > 3 && (
-                      <View style={styles.bonusTag}>
-                        <Ionicons name="star" size={10} color={colors.success} />
-                        <Text style={styles.bonusTagText}>Bonus</Text>
-                      </View>
-                    )}
                   </View>
                   <View style={styles.psRight}>
-                    <Text style={styles.netNum}>{formatMoney(netPay(ps), ps.currency)}</Text>
+                    <Text style={[styles.netNum, isSelected && styles.netNumActive]}>
+                      {formatMoney(net, ps.currency)}
+                    </Text>
                     <Badge tone="success">{ps.status}</Badge>
                   </View>
                 </Row>
               </Card>
-            </Pressable>
-          ))}
+            );
+          })}
 
           {/* Payslip detail */}
           {selected && (
             <>
               <SectionTitle title="Payslip detail" />
               <Card>
-                <Row style={styles.psHeader}>
+                <Row style={styles.detailHeader}>
                   <View>
-                    <Text style={styles.psTitle}>{selected.period}</Text>
+                    <Text style={styles.detailPeriod}>{selected.period}</Text>
                     <Text style={styles.cardSub}>Pay date: {formatShortDate(selected.payDate)}</Text>
                   </View>
                   <Badge tone="success">{selected.status}</Badge>
                 </Row>
                 <Divider />
 
-                <Text style={styles.sectionLabel}>EARNINGS</Text>
+                {/* Earnings */}
+                <Row style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel}>EARNINGS</Text>
+                  <Text style={styles.sectionLabelAmt}>{formatMoney(grossPay(selected), selected.currency)}</Text>
+                </Row>
                 {selected.earnings.map((line) => (
                   <PayLine key={line.label} label={line.label} amount={line.amount} currency={selected.currency} />
                 ))}
-                <Row style={styles.subTotal}>
-                  <Text style={styles.subTotalLabel}>Gross pay</Text>
-                  <Text style={styles.subTotalValue}>{formatMoney(grossPay(selected), selected.currency)}</Text>
-                </Row>
 
                 <Divider />
 
-                <Text style={styles.sectionLabel}>DEDUCTIONS</Text>
+                {/* Deductions */}
+                <Row style={styles.sectionLabelRow}>
+                  <Text style={styles.sectionLabel}>DEDUCTIONS</Text>
+                  <Text style={[styles.sectionLabelAmt, styles.deductionTotal]}>
+                    –{formatMoney(selected.deductions.reduce((s, l) => s + l.amount, 0), selected.currency)}
+                  </Text>
+                </Row>
                 {selected.deductions.map((line) => (
                   <PayLine key={line.label} label={line.label} amount={line.amount} currency={selected.currency} negative />
                 ))}
 
                 <Divider />
 
-                <Row style={styles.netRow}>
-                  <Text style={styles.netLabel}>Net pay</Text>
-                  <Text style={styles.netValue}>{formatMoney(netPay(selected), selected.currency)}</Text>
-                </Row>
+                {/* Net */}
+                <View style={styles.netBox}>
+                  <Row>
+                    <Text style={styles.netLabel}>Net pay</Text>
+                    <Text style={styles.netValue}>{formatMoney(netPay(selected), selected.currency)}</Text>
+                  </Row>
+                </View>
               </Card>
             </>
           )}
@@ -195,9 +230,11 @@ export function PayScreen() {
         <>
           <SectionTitle title="Submit reimbursement" />
           <Card>
-            <Text style={styles.formDesc}>
-              Submit expense claims for approval. Approved claims are included in your next payslip.
-            </Text>
+            <AlertBanner
+              tone="info"
+              message="Approved claims are included in your next payslip."
+              style={styles.formAlert}
+            />
 
             <Row style={styles.halfRow}>
               <FormField label="Category" error={claimErrors.claimCat} style={styles.half}>
@@ -226,7 +263,13 @@ export function PayScreen() {
                 placeholder="Brief description of the expense…"
               />
             </FormField>
-            <Button style={styles.submitBtn} onPress={submitClaim}>Submit claim</Button>
+            <Button
+              style={styles.submitBtn}
+              onPress={submitClaim}
+              leftIcon={<Ionicons name="send-outline" size={14} color={colors.white} />}
+            >
+              Submit claim
+            </Button>
           </Card>
 
           <SectionTitle title="My claims" />
@@ -234,7 +277,7 @@ export function PayScreen() {
             <Empty icon="receipt-outline" message="No reimbursement claims yet." />
           ) : (
             reimbursements.map((item) => (
-              <Card key={item.id}>
+              <Card key={item.id} accent={statusBorderColor(item.status)}>
                 <Row>
                   <View style={styles.flex}>
                     <Text style={styles.cardTitle}>{item.category}</Text>
@@ -256,9 +299,11 @@ export function PayScreen() {
         <>
           <SectionTitle title="Request salary advance" />
           <Card>
-            <Text style={styles.formDesc}>
-              Salary advances are deducted from your next payslip. Subject to HR approval.
-            </Text>
+            <AlertBanner
+              tone="warning"
+              message="Advances are deducted from your next payslip. Subject to HR approval."
+              style={styles.formAlert}
+            />
 
             <FormField label="Amount (THB)" error={advErrors.advAmt}>
               <TextFieldInput
@@ -278,7 +323,13 @@ export function PayScreen() {
                 error={advErrors.advReason}
               />
             </FormField>
-            <Button style={styles.submitBtn} onPress={submitAdv}>Request advance</Button>
+            <Button
+              style={styles.submitBtn}
+              onPress={submitAdv}
+              leftIcon={<Ionicons name="send-outline" size={14} color={colors.white} />}
+            >
+              Request advance
+            </Button>
           </Card>
 
           <SectionTitle title="My advances" />
@@ -286,7 +337,7 @@ export function PayScreen() {
             <Empty icon="cash-outline" message="No salary advance requests yet." />
           ) : (
             salaryAdvances.map((item) => (
-              <Card key={item.id}>
+              <Card key={item.id} accent={statusBorderColor(item.status)}>
                 <Row>
                   <View style={styles.flex}>
                     <Text style={styles.cardTitle}>Salary advance</Text>
@@ -309,41 +360,57 @@ export function PayScreen() {
 
 const styles = StyleSheet.create({
   tabRow: { gap: spacing.sm, justifyContent: 'flex-start' },
-  ytdRow: { justifyContent: 'space-around' },
-  ytdItem: { alignItems: 'center' },
-  ytdLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  ytdValue: { color: colors.text, fontSize: 14, fontWeight: '800', marginTop: 4 },
+
+  // YTD
+  ytdRow: { justifyContent: 'space-around', paddingBottom: spacing.sm },
+  ytdItem: { alignItems: 'center', gap: 2 },
+  ytdLabel: { color: colors.muted, fontSize: font.xs, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  ytdValue: { color: colors.text, fontSize: font.lg, fontWeight: '900', marginTop: 2 },
+  ytdSub: { color: colors.muted, fontSize: font.xs },
   ytdTax: { color: colors.danger },
   ytdNet: { color: colors.primary },
-  ytdDivider: { backgroundColor: colors.border, height: 28, width: 1 },
-  chartTitle: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: spacing.sm, textTransform: 'uppercase' },
-  psRow: {},
-  psRowActive: { borderColor: colors.primary, borderWidth: 2 },
+  ytdDivider: { backgroundColor: colors.border, height: 40, width: 1 },
+
+  // Payslip list
+  flex: { flex: 1, paddingRight: spacing.sm },
+  psHeader: { justifyContent: 'flex-start', gap: spacing.sm, marginBottom: 2 },
+  psRowActive: {},
   psRight: { alignItems: 'flex-end', gap: spacing.xs },
-  netNum: { color: colors.text, fontSize: 16, fontWeight: '900' },
-  bonusTag: { alignItems: 'center', flexDirection: 'row', gap: 3, marginTop: 3 },
-  bonusTagText: { color: colors.success, fontSize: 11, fontWeight: '700' },
-  psHeader: { marginBottom: spacing.xs },
-  psTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
-  sectionLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: spacing.sm, marginTop: spacing.sm },
-  payLine: { paddingVertical: spacing.xs },
-  payLineLabel: { color: colors.textSecondary, flex: 1, fontSize: 14 },
-  payLineAmt: { color: colors.text, fontSize: 14, fontWeight: '700' },
+  netNum: { color: colors.text, fontSize: font.lg, fontWeight: '900' },
+  netNumActive: { color: colors.primary },
+  bonusTag: { alignItems: 'center', flexDirection: 'row', gap: 3 },
+  bonusTagText: { color: colors.success, fontSize: font.xs, fontWeight: '700' },
+
+  // Payslip detail
+  detailHeader: { marginBottom: spacing.xs },
+  detailPeriod: { color: colors.text, fontSize: font.lg, fontWeight: '800' },
+  sectionLabelRow: { marginBottom: spacing.sm, marginTop: spacing.sm },
+  sectionLabel: { color: colors.muted, fontSize: font.xs, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  sectionLabelAmt: { color: colors.text, fontSize: font.sm, fontWeight: '700' },
+  deductionTotal: { color: colors.danger },
+  payLine: { paddingVertical: 5 },
+  payLineLabel: { color: colors.textSecondary, flex: 1, fontSize: font.sm },
+  payLineAmt: { color: colors.success, fontSize: font.sm, fontWeight: '700' },
   deduction: { color: colors.danger },
-  subTotal: { marginTop: spacing.sm },
-  subTotalLabel: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  subTotalValue: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  netRow: {},
-  netLabel: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  netValue: { color: colors.primary, fontSize: 22, fontWeight: '900' },
-  formDesc: { color: colors.muted, fontSize: 13, lineHeight: 19, marginBottom: spacing.md },
+  netBox: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
+    padding: spacing.md,
+  },
+  netLabel: { color: colors.primaryText, fontSize: font.lg, fontWeight: '800' },
+  netValue: { color: colors.primary, fontSize: font.xxl, fontWeight: '900' },
+
+  // Claims / Advances
+  formAlert: { marginBottom: spacing.md },
   halfRow: { alignItems: 'flex-start', gap: spacing.md },
   half: { flex: 1 },
   fieldMt: { marginTop: spacing.md },
   submitBtn: { marginTop: spacing.lg },
-  flex: { flex: 1, paddingRight: spacing.md },
   claimRight: { alignItems: 'flex-end', gap: spacing.xs },
-  claimAmt: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  cardSub: { color: colors.muted, fontSize: 13, marginTop: 2 },
+  claimAmt: { color: colors.text, fontSize: font.lg, fontWeight: '800' },
+
+  // Common
+  cardTitle: { color: colors.text, fontSize: font.md, fontWeight: '700' },
+  cardSub: { color: colors.muted, fontSize: font.sm, marginTop: 2 },
 });

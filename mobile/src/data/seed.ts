@@ -1,4 +1,20 @@
-export const employees = [
+import type {
+  Employee,
+  LeaveType,
+  EmployeeLeaveBalances,
+  LeaveRequest,
+  AttendanceRecord,
+  Payslip,
+  HrDocument,
+  CorrectionRequest,
+  OvertimeRequest,
+  Reimbursement,
+  SalaryAdvance,
+  Notification,
+  OnboardingTask,
+} from '../types';
+
+export const employees: Employee[] = [
   { id: 'e001', code: 'MER-001', first: 'Anya', last: 'Sirichai', email: 'anya@mercury.co', phone: '+66 82 100 0101', position: 'Head of People', dept: 'People', manager: null, location: 'Bangkok HQ', hire: '2021-03-15', status: 'active' },
   { id: 'e002', code: 'MER-002', first: 'Marcus', last: 'Tan', email: 'marcus@mercury.co', phone: '+66 82 100 0102', position: 'Engineering Manager', dept: 'Engineering', manager: 'e001', location: 'Bangkok HQ', hire: '2021-06-01', status: 'active' },
   { id: 'e005', code: 'MER-005', first: 'Saki', last: 'Watanabe', email: 'saki@mercury.co', phone: '+66 82 100 0105', position: 'Senior Software Engineer', dept: 'Engineering', manager: 'e002', location: 'Bangkok HQ', hire: '2023-02-13', status: 'active' },
@@ -6,16 +22,16 @@ export const employees = [
   { id: 'e007', code: 'MER-007', first: 'Leo', last: 'Tanaka', email: 'leo@mercury.co', phone: '+66 82 100 0107', position: 'Junior Software Engineer', dept: 'Engineering', manager: 'e005', location: 'Remote', hire: '2025-01-15', status: 'active' },
 ];
 
-export const currentUserId = 'e005';
+export const currentUserId: string = 'e005';
 
-export const leaveTypes = [
+export const leaveTypes: LeaveType[] = [
   { id: 'lt1', code: 'AL', name: 'Annual leave', requiresAttachment: false },
   { id: 'lt2', code: 'SL', name: 'Sick leave', requiresAttachment: true },
   { id: 'lt3', code: 'PL', name: 'Personal leave', requiresAttachment: false },
   { id: 'lt4', code: 'BL', name: 'Birthday leave', requiresAttachment: false },
 ];
 
-export const leaveBalances = {
+export const leaveBalances: EmployeeLeaveBalances = {
   e005: {
     lt1: { granted: 15, used: 5, pending: 0 },
     lt2: { granted: 10, used: 2, pending: 0 },
@@ -24,7 +40,7 @@ export const leaveBalances = {
   },
 };
 
-export const leaveRequests = [
+export const leaveRequests: LeaveRequest[] = [
   // Pending approvals for Saki (approver = e005)
   { id: 'lr001', emp: 'e002', type: 'lt1', from: '2026-05-22', to: '2026-05-26', days: 3, reason: 'Family wedding in Lyon', status: 'pending', submitted: '2026-05-12T09:14:00Z', approver: 'e005' },
   { id: 'lr010', emp: 'e006', type: 'lt2', from: '2026-05-21', to: '2026-05-22', days: 2, reason: 'Flu recovery, doctor note attached', status: 'pending', submitted: '2026-05-20T08:30:00Z', approver: 'e005' },
@@ -38,7 +54,7 @@ export const leaveRequests = [
   { id: 'lr008', emp: 'e005', type: 'lt1', from: '2025-10-20', to: '2025-10-22', days: 3, reason: 'Chulalongkorn Day long weekend', status: 'approved', submitted: '2025-09-28T10:00:00Z', approver: 'e002', decided: '2025-09-30T09:00:00Z' },
 ];
 
-export const attendance = [
+export const attendance: AttendanceRecord[] = [
   // Current week (May 18–22, 2026 — Wed May 20 is today)
   { id: 'att-2026-05-19-e005', emp: 'e005', date: '2026-05-19', in: '09:14', out: '18:29', hours: 9.3, status: 'present', source: 'kiosk', wfh: false },
   { id: 'att-2026-05-18-e005', emp: 'e005', date: '2026-05-18', in: '08:58', out: '17:52', hours: 8.9, status: 'present', source: 'web', wfh: true },
@@ -63,7 +79,7 @@ export const attendance = [
   { id: 'att-2026-04-28-e005', emp: 'e005', date: '2026-04-28', in: '09:00', out: '18:03', hours: 9.1, status: 'present', source: 'kiosk', wfh: false },
 ];
 
-export const payslips = [
+export const payslips: Payslip[] = [
   {
     id: 'ps-2026-04-e005',
     emp: 'e005',
@@ -176,35 +192,35 @@ export const payslips = [
   },
 ];
 
-export const documents = [
+export const documents: HrDocument[] = [
   { id: 'doc1', emp: 'e005', name: 'Employment contract', category: 'Contract', status: 'verified', uploaded: '2023-02-13', expires: null },
   { id: 'doc2', emp: 'e005', name: 'National ID', category: 'Identity', status: 'verified', uploaded: '2025-01-04', expires: '2030-01-04' },
   { id: 'doc3', emp: 'e005', name: 'AWS Solutions Architect', category: 'Certificate', status: 'expiring', uploaded: '2024-11-12', expires: '2026-07-12' },
   { id: 'doc4', emp: 'e005', name: 'Work permit', category: 'Legal', status: 'verified', uploaded: '2023-02-13', expires: '2027-02-12' },
 ];
 
-export const correctionRequests = [
+export const correctionRequests: CorrectionRequest[] = [
   { id: 'cr1', emp: 'e005', date: '2026-05-15', requestedIn: '09:02', requestedOut: '18:13', reason: 'Forgot to tap badge on arrival', status: 'pending', approver: 'e002' },
   { id: 'cr2', emp: 'e005', date: '2026-05-07', requestedIn: '09:00', requestedOut: '17:30', reason: 'Sick day — missed clock-out', status: 'approved', approver: 'e002' },
 ];
 
-export const overtimeRequests = [
+export const overtimeRequests: OvertimeRequest[] = [
   { id: 'ot1', emp: 'e005', date: '2026-05-18', hours: 2, reason: 'Release support — v2.4 hotfix', status: 'approved', approver: 'e002' },
   { id: 'ot2', emp: 'e005', date: '2026-05-06', hours: 3, reason: 'Sprint deadline — feature freeze', status: 'pending', approver: 'e002' },
 ];
 
-export const reimbursements = [
+export const reimbursements: Reimbursement[] = [
   { id: 'rb1', emp: 'e005', category: 'Transport', amount: 850, currency: 'THB', reason: 'Client visit taxi — Mercury Tower', status: 'pending', submitted: '2026-05-17' },
   { id: 'rb2', emp: 'e005', category: 'Learning', amount: 2400, currency: 'THB', reason: 'React Native workshop ticket', status: 'approved', submitted: '2026-04-20' },
   { id: 'rb3', emp: 'e005', category: 'Meals', amount: 580, currency: 'THB', reason: 'Team lunch during sprint review', status: 'approved', submitted: '2026-04-05' },
   { id: 'rb4', emp: 'e005', category: 'Equipment', amount: 3200, currency: 'THB', reason: 'Mechanical keyboard for remote work', status: 'rejected', submitted: '2026-03-15' },
 ];
 
-export const salaryAdvances = [
+export const salaryAdvances: SalaryAdvance[] = [
   { id: 'sa1', emp: 'e005', amount: 12000, currency: 'THB', reason: 'Emergency home repair — water damage', status: 'rejected', submitted: '2026-03-10' },
 ];
 
-export const notifications = [
+export const notifications: Notification[] = [
   { id: 'n1', title: 'Payslip ready', body: 'April 2026 payslip is available for download.', kind: 'payroll', read: false },
   { id: 'n2', title: 'Leave pending approval', body: 'Your personal leave request (Jun 5) is awaiting Marcus for approval.', kind: 'leave', read: false },
   { id: 'n3', title: 'Certificate expiring', body: 'AWS certificate expires in 53 days — consider renewal.', kind: 'document', read: true },
@@ -212,7 +228,7 @@ export const notifications = [
   { id: 'n5', title: 'Team approval needed', body: '3 leave requests from your team are waiting for your decision.', kind: 'leave', read: false },
 ];
 
-export const onboardingTasks = [
+export const onboardingTasks: OnboardingTask[] = [
   { id: 'task1', emp: 'e005', title: 'Review employee handbook', owner: 'employee', done: true },
   { id: 'task2', emp: 'e005', title: 'Confirm emergency contact details', owner: 'employee', done: false },
   { id: 'task3', emp: 'e005', title: 'Complete annual security refresher', owner: 'employee', done: false },

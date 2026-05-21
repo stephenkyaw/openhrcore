@@ -1,50 +1,16 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing } from '../theme';
-import { calendarWeeks, DAY_ABBRS, MONTH_NAMES, toDateStr } from '../utils/dates';
+import { colors, radius, spacing } from '../../theme';
+import { calendarWeeks, DAY_ABBRS, MONTH_NAMES, toDateStr } from '../../utils/dates';
 
-// ─── FormField ────────────────────────────────────────────────────────────────
-
-export function FormField({ label, error, children, style }) {
-  return (
-    <View style={[styles.field, style]}>
-      {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
-      {children}
-      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
-    </View>
-  );
-}
-
-// ─── TextFieldInput ───────────────────────────────────────────────────────────
-
-export function TextFieldInput({ error, ...props }) {
-  return (
-    <TextInput
-      style={[styles.input, error && styles.inputError]}
-      placeholderTextColor={colors.muted}
-      {...props}
-    />
-  );
-}
-
-// ─── DateFieldButton ─────────────────────────────────────────────────────────
-// Pressable that looks like an input, shows formatted date or placeholder.
-
-export function DateFieldButton({ value, placeholder = 'Select date', onPress, error }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.input, styles.dateBtn, error && styles.inputError]}
-      accessibilityRole="button"
-      accessibilityLabel={value || placeholder}
-    >
-      <Text style={value ? styles.dateBtnValue : styles.dateBtnPlaceholder}>
-        {value || placeholder}
-      </Text>
-      <Ionicons name="calendar-outline" size={16} color={colors.muted} />
-    </Pressable>
-  );
+interface InlineDatePickerProps {
+  value?: string;
+  rangeFrom?: string;
+  rangeTo?: string;
+  onSelect: (dateStr: string) => void;
+  minDate?: string;
+  maxDate?: string;
 }
 
 // ─── InlineDatePicker ─────────────────────────────────────────────────────────
@@ -58,7 +24,7 @@ export function DateFieldButton({ value, placeholder = 'Select date', onPress, e
 //   minDate     – earliest selectable date
 //   maxDate     – latest selectable date
 
-export function InlineDatePicker({ value, rangeFrom, rangeTo, onSelect, minDate, maxDate }) {
+export function InlineDatePicker({ value, rangeFrom, rangeTo, onSelect, minDate, maxDate }: InlineDatePickerProps): React.ReactElement {
   const today = new Date();
   const initDate = value || rangeFrom || toDateStr(today);
   const [year, setYear] = useState(() => parseInt(initDate.slice(0, 4), 10));
@@ -67,7 +33,7 @@ export function InlineDatePicker({ value, rangeFrom, rangeTo, onSelect, minDate,
   const weeks = useMemo(() => calendarWeeks(year, month), [year, month]);
 
   const fmt = useCallback(
-    (d) => `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+    (d: number) => `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
     [year, month],
   );
 
@@ -116,7 +82,7 @@ export function InlineDatePicker({ value, rangeFrom, rangeTo, onSelect, minDate,
             return (
               <Pressable
                 key={di}
-                disabled={disabled}
+                disabled={!!disabled}
                 onPress={() => onSelect(dateStr)}
                 style={[
                   styles.cell,
@@ -144,79 +110,7 @@ export function InlineDatePicker({ value, rangeFrom, rangeTo, onSelect, minDate,
   );
 }
 
-// ─── SegmentedControl ─────────────────────────────────────────────────────────
-
-export function SegmentedControl({ options, value, onChange }) {
-  return (
-    <View style={styles.segmented}>
-      {options.map((opt) => {
-        const active = opt.value === value;
-        return (
-          <Pressable
-            key={opt.value}
-            onPress={() => onChange(opt.value)}
-            style={[styles.segment, active && styles.segmentActive]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-          >
-            <Text style={[styles.segmentCode, active && styles.segmentCodeActive]}>
-              {opt.code}
-            </Text>
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  field: {
-    gap: spacing.xs,
-  },
-  fieldLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  fieldError: {
-    color: colors.danger,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: 15,
-    minHeight: 46,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  inputError: {
-    borderColor: colors.danger,
-  },
-  dateBtn: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  dateBtnValue: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  dateBtnPlaceholder: {
-    color: colors.muted,
-    fontSize: 15,
-  },
-
   picker: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -287,38 +181,5 @@ const styles = StyleSheet.create({
   },
   cellTextDisabled: {
     color: colors.muted,
-  },
-
-  segmented: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  segment: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-    padding: spacing.sm,
-  },
-  segmentActive: {
-    backgroundColor: colors.primarySoft,
-  },
-  segmentCode: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  segmentCodeActive: {
-    color: colors.primaryText,
-  },
-  segmentLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  segmentLabelActive: {
-    color: colors.primaryText,
   },
 });

@@ -16,33 +16,90 @@ import {
   salaryAdvances,
 } from '../data/seed';
 import { daysBetween, todayStr, toDateStr } from '../utils/dates';
+import type {
+  AttendanceRecord,
+  CorrectionRequest,
+  Employee,
+  EmployeeLeaveBalances,
+  HrDocument,
+  LeaveBalanceMap,
+  LeaveRequest,
+  LeaveType,
+  MonthSummary,
+  Notification,
+  OnboardingTask,
+  OvertimeRequest,
+  Payslip,
+  Reimbursement,
+  SalaryAdvance,
+  WeekAttendanceDay,
+  YtdEarnings,
+} from '../types';
 
-const EssContext = createContext(null);
+interface EssContextValue {
+  employee: Employee;
+  manager: Employee | undefined;
+  team: Employee[];
+  employees: Employee[];
+  leaveTypes: LeaveType[];
+  requests: LeaveRequest[];
+  pendingApprovals: LeaveRequest[];
+  balances: LeaveBalanceMap;
+  attendance: AttendanceRecord[];
+  weekAttendance: WeekAttendanceDay[];
+  monthSummary: MonthSummary;
+  corrections: CorrectionRequest[];
+  overtime: OvertimeRequest[];
+  payslips: Payslip[];
+  ytdEarnings: YtdEarnings;
+  upcomingLeave: LeaveRequest[];
+  documents: HrDocument[];
+  reimbursements: Reimbursement[];
+  salaryAdvances: SalaryAdvance[];
+  notifications: Notification[];
+  tasks: OnboardingTask[];
+  submitLeave: (args: { type: string; from: string; to: string; reason: string }) => boolean;
+  cancelLeave: (id: string) => void;
+  decideLeave: (id: string, decision: 'approved' | 'rejected') => void;
+  clockIn: (args?: { wfh?: boolean }) => void;
+  clockOut: () => void;
+  submitCorrection: (args: { date: string; requestedIn: string; requestedOut: string; reason: string }) => boolean;
+  submitOvertime: (args: { date: string; hours: string; reason: string }) => boolean;
+  submitReimbursement: (args: { category: string; amount: string; reason: string }) => boolean;
+  submitAdvance: (args: { amount: string; reason: string }) => boolean;
+  uploadDocument: (args: { name: string; category: string }) => boolean;
+  toggleTask: (id: string) => void;
+  markNotificationRead: (id: string) => void;
+  markAllRead: () => void;
+  toast: string | null;
+}
 
-export function useEss() {
+const EssContext = createContext<EssContextValue | null>(null);
+
+export function useEss(): EssContextValue {
   const value = useContext(EssContext);
   if (!value) throw new Error('useEss must be used within EssProvider');
   return value;
 }
 
-export function EssProvider({ children }) {
-  const [requests, setRequests] = useState(leaveRequests);
-  const [balances, setBalances] = useState(leaveBalances);
-  const [attendance, setAttendance] = useState(seedAttendance);
-  const [corrections, setCorrections] = useState(correctionRequests);
-  const [overtime, setOvertime] = useState(overtimeRequests);
-  const [claims, setClaims] = useState(reimbursements);
-  const [advances, setAdvances] = useState(salaryAdvances);
-  const [docs, setDocs] = useState(documents);
-  const [alerts, setAlerts] = useState(notifications);
-  const [tasks, setTasks] = useState(onboardingTasks);
-  const [toast, setToast] = useState(null);
+export function EssProvider({ children }: { children: React.ReactNode }): React.ReactElement {
+  const [requests, setRequests] = useState<LeaveRequest[]>(leaveRequests);
+  const [balances, setBalances] = useState<EmployeeLeaveBalances>(leaveBalances);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>(seedAttendance);
+  const [corrections, setCorrections] = useState<CorrectionRequest[]>(correctionRequests);
+  const [overtime, setOvertime] = useState<OvertimeRequest[]>(overtimeRequests);
+  const [claims, setClaims] = useState<Reimbursement[]>(reimbursements);
+  const [advances, setAdvances] = useState<SalaryAdvance[]>(salaryAdvances);
+  const [docs, setDocs] = useState<HrDocument[]>(documents);
+  const [alerts, setAlerts] = useState<Notification[]>(notifications);
+  const [tasks, setTasks] = useState<OnboardingTask[]>(onboardingTasks);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const employee = useMemo(() => employees.find((e) => e.id === currentUserId), []);
+  const employee = useMemo(() => employees.find((e) => e.id === currentUserId)!, []);
   const manager = useMemo(() => employees.find((e) => e.id === employee.manager), [employee]);
   const team = useMemo(() => employees.filter((e) => e.manager === currentUserId), []);
 
-  const showToast = useCallback((message) => {
+  const showToast = useCallback((message: string) => {
     setToast(message);
     setTimeout(() => setToast(null), 2600);
   }, []);
@@ -54,7 +111,7 @@ export function EssProvider({ children }) {
     [attendance],
   );
 
-  const weekAttendance = useMemo(() => {
+  const weekAttendance = useMemo((): WeekAttendanceDay[] => {
     const today = new Date();
     const dow = (today.getDay() + 6) % 7; // 0=Mon … 4=Fri
     return Array.from({ length: 5 }, (_, i) => {
@@ -65,7 +122,7 @@ export function EssProvider({ children }) {
     });
   }, [myAttendance]);
 
-  const monthSummary = useMemo(() => {
+  const monthSummary = useMemo((): MonthSummary => {
     const prefix = new Date().toISOString().slice(0, 7); // "YYYY-MM"
     const monthly = myAttendance.filter((r) => r.date.startsWith(prefix));
     return {
@@ -84,7 +141,7 @@ export function EssProvider({ children }) {
     [],
   );
 
-  const ytdEarnings = useMemo(() => {
+  const ytdEarnings = useMemo((): YtdEarnings => {
     const year = String(new Date().getFullYear());
     const ytd = myPayslips.filter((p) => p.payDate.startsWith(year));
     const gross = ytd.reduce((s, p) => s + p.earnings.reduce((e, l) => e + l.amount, 0), 0);
@@ -117,13 +174,13 @@ export function EssProvider({ children }) {
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  const submitLeave = useCallback(({ type, from, to, reason }) => {
+  const submitLeave = useCallback(({ type, from, to, reason }: { type: string; from: string; to: string; reason: string }): boolean => {
     const days = daysBetween(from, to);
     if (!type || !from || !to || days <= 0) {
       showToast('Check leave type and dates');
       return false;
     }
-    const request = {
+    const request: LeaveRequest = {
       id: `lr-${Date.now()}`,
       emp: currentUserId,
       type,
@@ -144,10 +201,10 @@ export function EssProvider({ children }) {
     return true;
   }, [employee.manager, showToast]);
 
-  const cancelLeave = useCallback((id) => {
+  const cancelLeave = useCallback((id: string): void => {
     const req = requests.find((r) => r.id === id);
     if (!req || req.status !== 'pending') { showToast('Only pending leave can be cancelled'); return; }
-    setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status: 'cancelled' } : r));
+    setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status: 'cancelled' as const } : r));
     setBalances((prev) => {
       const cur = prev[currentUserId]?.[req.type] || { granted: 0, used: 0, pending: 0 };
       return { ...prev, [currentUserId]: { ...prev[currentUserId], [req.type]: { ...cur, pending: Math.max(0, cur.pending - req.days) } } };
@@ -155,7 +212,7 @@ export function EssProvider({ children }) {
     showToast('Leave request cancelled');
   }, [requests, showToast]);
 
-  const decideLeave = useCallback((id, decision) => {
+  const decideLeave = useCallback((id: string, decision: 'approved' | 'rejected'): void => {
     const req = requests.find((r) => r.id === id);
     if (!req || req.status !== 'pending') { showToast('Request already decided'); return; }
     setRequests((prev) =>
@@ -164,7 +221,7 @@ export function EssProvider({ children }) {
     showToast(decision === 'approved' ? 'Leave approved' : 'Leave rejected');
   }, [requests, showToast]);
 
-  const clockIn = useCallback(({ wfh = false } = {}) => {
+  const clockIn = useCallback(({ wfh = false }: { wfh?: boolean } = {}): void => {
     const today = todayStr();
     const existing = attendance.find((a) => a.date === today && a.emp === currentUserId);
     if (existing?.in && !existing?.out) { showToast('Already clocked in'); return; }
@@ -176,7 +233,7 @@ export function EssProvider({ children }) {
     showToast('Clocked in');
   }, [attendance, showToast]);
 
-  const clockOut = useCallback(() => {
+  const clockOut = useCallback((): void => {
     const today = todayStr();
     const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
     setAttendance((prev) =>
@@ -185,28 +242,28 @@ export function EssProvider({ children }) {
     showToast('Clocked out');
   }, [showToast]);
 
-  const submitCorrection = useCallback(({ date, requestedIn, requestedOut, reason }) => {
+  const submitCorrection = useCallback(({ date, requestedIn, requestedOut, reason }: { date: string; requestedIn: string; requestedOut: string; reason: string }): boolean => {
     if (!date || !requestedIn || !requestedOut) { showToast('Enter date and times'); return false; }
     setCorrections((prev) => [
-      { id: `cr-${Date.now()}`, emp: currentUserId, date, requestedIn, requestedOut, reason: reason?.trim() || 'Correction requested', status: 'pending', approver: employee.manager },
+      { id: `cr-${Date.now()}`, emp: currentUserId, date, requestedIn, requestedOut, reason: reason?.trim() || 'Correction requested', status: 'pending', approver: employee.manager! },
       ...prev,
     ]);
     showToast('Correction request sent');
     return true;
   }, [employee.manager, showToast]);
 
-  const submitOvertime = useCallback(({ date, hours, reason }) => {
+  const submitOvertime = useCallback(({ date, hours, reason }: { date: string; hours: string; reason: string }): boolean => {
     const parsed = Number(hours);
     if (!date || !parsed || parsed <= 0) { showToast('Enter overtime date and hours'); return false; }
     setOvertime((prev) => [
-      { id: `ot-${Date.now()}`, emp: currentUserId, date, hours: parsed, reason: reason?.trim() || 'Overtime request', status: 'pending', approver: employee.manager },
+      { id: `ot-${Date.now()}`, emp: currentUserId, date, hours: parsed, reason: reason?.trim() || 'Overtime request', status: 'pending', approver: employee.manager! },
       ...prev,
     ]);
     showToast('Overtime request sent');
     return true;
   }, [employee.manager, showToast]);
 
-  const submitReimbursement = useCallback(({ category, amount, reason }) => {
+  const submitReimbursement = useCallback(({ category, amount, reason }: { category: string; amount: string; reason: string }): boolean => {
     const parsed = Number(amount);
     if (!category || !parsed || parsed <= 0) { showToast('Enter category and amount'); return false; }
     setClaims((prev) => [
@@ -217,7 +274,7 @@ export function EssProvider({ children }) {
     return true;
   }, [showToast]);
 
-  const submitAdvance = useCallback(({ amount, reason }) => {
+  const submitAdvance = useCallback(({ amount, reason }: { amount: string; reason: string }): boolean => {
     const parsed = Number(amount);
     if (!parsed || parsed <= 0) { showToast('Enter advance amount'); return false; }
     setAdvances((prev) => [
@@ -228,7 +285,7 @@ export function EssProvider({ children }) {
     return true;
   }, [showToast]);
 
-  const uploadDocument = useCallback(({ name, category }) => {
+  const uploadDocument = useCallback(({ name, category }: { name: string; category: string }): boolean => {
     if (!name?.trim() || !category?.trim()) { showToast('Enter document name and category'); return false; }
     setDocs((prev) => [
       { id: `doc-${Date.now()}`, emp: currentUserId, name: name.trim(), category: category.trim(), status: 'pending', uploaded: todayStr(), expires: null },
@@ -238,19 +295,19 @@ export function EssProvider({ children }) {
     return true;
   }, [showToast]);
 
-  const toggleTask = useCallback((id) => {
+  const toggleTask = useCallback((id: string): void => {
     setTasks((prev) => prev.map((t) => t.id === id ? { ...t, done: !t.done } : t));
   }, []);
 
-  const markNotificationRead = useCallback((id) => {
+  const markNotificationRead = useCallback((id: string): void => {
     setAlerts((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
   }, []);
 
-  const markAllRead = useCallback(() => {
+  const markAllRead = useCallback((): void => {
     setAlerts((prev) => prev.map((n) => ({ ...n, read: true })));
   }, []);
 
-  const value = useMemo(() => ({
+  const value = useMemo((): EssContextValue => ({
     employee,
     manager,
     team,

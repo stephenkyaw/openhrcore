@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(npm install *)",
+      "Bash(npm ls *)",
+      "Bash(npm uninstall *)",
+      "Bash(node -e \"const ts = require\\('typescript'\\); console.log\\('TypeScript:', ts.version\\)\")",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@types/react/package.json'\\); console.log\\('@types/react:', pkg.version\\)\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Kyaw\\\\Desktop\\\\projects\\\\openhrcore\\\\mobile\\\\src\" -Recurse -Filter \"*.ts\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Kyaw\\\\Desktop\\\\projects\\\\openhrcore\\\\mobile\\\\src\" -Recurse -Filter \"*.tsx\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Kyaw\\\\Desktop\\\\projects\\\\openhrcore\\\\mobile\" -Filter \"App.tsx\")",
+      "Bash(npx tsc *)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(Get-ChildItem -Recurse -Include \"*.js.bak\")",
+      "Bash(Remove-Item -Force)",
+      "Bash(Get-ChildItem -Path src -Recurse -Include \"*.js\")",
+      "Bash(Select-Object -ExpandProperty FullName)"
+    ]
+  }
+}

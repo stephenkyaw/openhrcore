@@ -15,9 +15,17 @@ import { useEss } from '../store/EssStore';
 import { colors, radius, spacing } from '../theme';
 import { formatMoney, formatShortDate, todayStr } from '../utils/dates';
 
+interface ChatMessage {
+  id: string | number;
+  role: 'user' | 'assistant';
+  content: string;
+  attachType?: string;
+  isAudio?: boolean;
+}
+
 // ─── Mock AI brain ────────────────────────────────────────────────────────────
 
-function buildReply(text, data) {
+function buildReply(text: string, data: ReturnType<typeof useEss>): string {
   const q = text.toLowerCase().trim();
   const {
     attendance, balances, employee, leaveTypes, monthSummary,
@@ -153,13 +161,13 @@ function buildReply(text, data) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtTime(secs) {
+function fmtTime(secs: number): string {
   const m = Math.floor(secs / 60);
   const s = secs % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-const ATTACH_ICONS = {
+const ATTACH_ICONS: Record<string, string> = {
   camera: 'camera-outline',
   gallery: 'image-outline',
   document: 'document-text-outline',
@@ -167,7 +175,7 @@ const ATTACH_ICONS = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function TypingIndicator() {
+function TypingIndicator(): React.ReactElement {
   return (
     <View style={styles.msgRow}>
       <View style={styles.aiAvatar}>
@@ -184,15 +192,15 @@ function TypingIndicator() {
   );
 }
 
-function Message({ item }) {
+function Message({ item }: { item: ChatMessage }): React.ReactElement {
   const isUser = item.role === 'user';
   const textStyle = [styles.bubbleText, isUser && styles.bubbleTextUser];
 
-  let inner;
+  let inner: React.ReactElement;
   if (item.attachType) {
     inner = (
       <View style={styles.mediaRow}>
-        <Ionicons name={ATTACH_ICONS[item.attachType] || 'attach-outline'} size={16} color={isUser ? 'rgba(255,255,255,0.85)' : colors.primary} />
+        <Ionicons name={(ATTACH_ICONS[item.attachType] || 'attach-outline') as any} size={16} color={isUser ? 'rgba(255,255,255,0.85)' : colors.primary} />
         <Text style={textStyle}>{item.content}</Text>
       </View>
     );
@@ -241,28 +249,30 @@ const WAVEFORM = [5, 12, 7, 18, 9, 15, 6, 20, 10, 16, 8, 14, 7, 18, 11];
 
 const TAB_INSET = 84;
 
-export function ChatScreen() {
+export function ChatScreen(): React.ReactElement {
   const essData = useEss();
   const { employee } = essData;
 
-  const welcome = useMemo(() => ({
+  const welcome = useMemo((): ChatMessage => ({
     id: 'welcome',
     role: 'assistant',
     content: `Hi ${employee.first}! 👋 I'm your OpenHRCore AI assistant.\n\nI can help with leave balances, attendance, payslips, approvals, and more. What would you like to know?`,
   }), [employee.first]);
 
-  const [messages, setMessages]       = useState([welcome]);
-  const [input, setInput]             = useState('');
-  const [typing, setTyping]           = useState(false);
-  const [showAttach, setShowAttach]   = useState(false);
-  const [recording, setRecording]     = useState(false);
-  const [recSecs, setRecSecs]         = useState(0);
+  const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
+  const [input, setInput]       = useState('');
+  const [typing, setTyping]     = useState(false);
+  const [showAttach, setShowAttach] = useState(false);
+  const [recording, setRecording]   = useState(false);
+  const [recSecs, setRecSecs]       = useState(0);
 
-  const listRef      = useRef(null);
-  const recSecsRef   = useRef(0);
-  const recTimerRef  = useRef(null);
+  const listRef     = useRef<FlatList<ChatMessage>>(null);
+  const recSecsRef  = useRef(0);
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => () => clearInterval(recTimerRef.current), []);
+  useEffect(() => () => {
+    if (recTimerRef.current !== null) clearInterval(recTimerRef.current);
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
@@ -270,12 +280,12 @@ export function ChatScreen() {
 
   useEffect(() => { scrollToBottom(); }, [messages, typing, scrollToBottom]);
 
-  const pushReply = useCallback((reply) => {
+  const pushReply = useCallback((reply: string) => {
     setTyping(false);
     setMessages((prev) => [...prev, { id: Date.now(), role: 'assistant', content: reply }]);
   }, []);
 
-  const send = useCallback((text) => {
+  const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setShowAttach(false);
@@ -285,9 +295,9 @@ export function ChatScreen() {
     setTimeout(() => pushReply(buildReply(trimmed, essData)), 600 + Math.random() * 600);
   }, [essData, pushReply]);
 
-  const handleAttach = useCallback((type) => {
+  const handleAttach = useCallback((type: string) => {
     setShowAttach(false);
-    const labels = { camera: 'Photo taken', gallery: 'Image selected', document: 'Document attached' };
+    const labels: Record<string, string> = { camera: 'Photo taken', gallery: 'Image selected', document: 'Document attached' };
     setMessages((prev) => [...prev, { id: Date.now(), role: 'user', content: labels[type], attachType: type }]);
     setTyping(true);
     setTimeout(() => pushReply(`Got your ${type}! Attachment processing is coming in the next release. Is there anything else I can help with?`), 900);
@@ -305,7 +315,7 @@ export function ChatScreen() {
   }, []);
 
   const stopRecording = useCallback(() => {
-    clearInterval(recTimerRef.current);
+    if (recTimerRef.current !== null) clearInterval(recTimerRef.current);
     const dur = fmtTime(recSecsRef.current || 1);
     setRecording(false);
     setRecSecs(0);
@@ -359,7 +369,7 @@ export function ChatScreen() {
           {ATTACH_OPTIONS.map((opt) => (
             <Pressable key={opt.key} style={styles.attachOpt} onPress={() => handleAttach(opt.key)}>
               <View style={styles.attachIconWrap}>
-                <Ionicons name={opt.icon} size={22} color={colors.primary} />
+                <Ionicons name={opt.icon as any} size={22} color={colors.primary} />
               </View>
               <Text style={styles.attachOptLabel}>{opt.label}</Text>
             </Pressable>
