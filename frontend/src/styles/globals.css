@@ -3,81 +3,99 @@
 @tailwind utilities;
 
 :root {
-  /* Professional HRMS palette: cool gray foundation with blue as the system accent. */
-  --bg:          0.970 0.010 250;
-  --surface:    0.940 0.016 250;
-  --card:        1     0     0;
-  --elevated:    1     0     0;
-  --muted:       0.928 0.016 250;
-  --muted-fg:    0.48  0.030 250;
-  --subtle:      0.910 0.018 250;
-  --fg:          0.22  0.035 255;
-  --fg-soft:     0.34  0.032 255;
-  --border:      0.875 0.020 250;
-  --border-soft: 0.895 0.018 250;
-  --ring:        0.58  0.18  255;
-  --accent:      0.55  0.20  255;
-  --accent-fg:   0.99  0.005 255;
-  --accent-soft: 0.95  0.04  255;
-  --danger:      0.6   0.2   25;
-  --warn:        0.72  0.16  75;
-  --ok:          0.65  0.13  165;
-  --info:        0.65  0.13  240;
-  --radius:      8px;
+  /* Open source enterprise admin palette: shadcn-like neutrals with a dependable blue accent. */
+  --bg: 0.992 0.001 248;
+  --surface: 0.965 0.004 248;
+  --card: 1 0 0;
+  --elevated: 1 0 0;
+  --muted: 0.94 0.004 248;
+  --muted-fg: 0.475 0.014 248;
+  --subtle: 0.908 0.006 248;
+  --fg: 0.205 0.018 248;
+  --fg-soft: 0.34 0.016 248;
+  --border: 0.845 0.008 248;
+  --border-soft: 0.895 0.006 248;
+  --ring: 0.56 0.18 255;
+  --accent: 0.54 0.19 255;
+  --accent-fg: 0.99 0.004 255;
+  --accent-soft: 0.948 0.035 255;
+  --danger: 0.6 0.2 25;
+  --warn: 0.72 0.16 75;
+  --ok: 0.65 0.13 165;
+  --info: 0.65 0.13 240;
+  --radius: 8px;
 
-  --shadow-sm:   0 1px 0 0 oklch(0.22 0.035 255 / 0.05);
-  --shadow:      0 1px 2px -1px oklch(0.22 0.035 255 / 0.08),
-                 0 8px 18px -14px oklch(0.22 0.035 255 / 0.18);
-  --shadow-lg:   0 8px 16px -10px oklch(0.22 0.035 255 / 0.18),
-                 0 24px 44px -24px oklch(0.22 0.035 255 / 0.24);
+  --shadow-sm: 0 1px 0 0 oklch(0.2 0.018 248 / 0.06);
+  --shadow: 0 1px 2px -1px oklch(0.2 0.018 248 / 0.12);
+  --shadow-lg: 0 10px 28px -20px oklch(0.2 0.018 248 / 0.3);
 }
 
 .dark {
-  --bg:          0.145 0.018 255;
-  --surface:    0.175 0.020 255;
-  --card:        0.205 0.020 255;
-  --elevated:    0.235 0.022 255;
-  --muted:       0.245 0.022 255;
-  --muted-fg:    0.68  0.030 255;
-  --subtle:      0.225 0.020 255;
-  --fg:          0.97  0.006 255;
-  --fg-soft:     0.84  0.014 255;
-  --border:      0.30  0.026 255;
+  --bg: 0.145 0.018 255;
+  --surface: 0.175 0.02 255;
+  --card: 0.205 0.02 255;
+  --elevated: 0.235 0.022 255;
+  --muted: 0.245 0.022 255;
+  --muted-fg: 0.68 0.03 255;
+  --subtle: 0.225 0.02 255;
+  --fg: 0.97 0.006 255;
+  --fg-soft: 0.84 0.014 255;
+  --border: 0.3 0.026 255;
   --border-soft: 0.255 0.024 255;
-  --ring:        0.72  0.16  255;
-  --accent:      0.72  0.16  255;
-  --accent-fg:   0.15  0.02  255;
-  --accent-soft: 0.30  0.06  255;
-  --shadow-sm:   0 1px 0 0 oklch(0 0 0 / 0.30);
-  --shadow:      0 1px 2px -1px oklch(0 0 0 / 0.35),
-                 0 2px 6px -2px oklch(0 0 0 / 0.25);
-  --shadow-lg:   0 4px 8px -4px oklch(0 0 0 / 0.45),
-                 0 12px 24px -8px oklch(0 0 0 / 0.40);
+  --ring: 0.72 0.16 255;
+  --accent: 0.72 0.16 255;
+  --accent-fg: 0.15 0.02 255;
+  --accent-soft: 0.3 0.06 255;
+  --shadow-sm: 0 1px 0 0 oklch(0 0 0 / 0.3);
+  --shadow:
+    0 1px 2px -1px oklch(0 0 0 / 0.35), 0 2px 6px -2px oklch(0 0 0 / 0.25);
+  --shadow-lg:
+    0 4px 8px -4px oklch(0 0 0 / 0.45), 0 12px 24px -8px oklch(0 0 0 / 0.4);
 }
 
-html, body { height: 100%; }
+html,
+body {
+  height: 100%;
+}
 body {
   margin: 0;
-  font-family: 'Geist', system-ui, sans-serif;
+  font-family: "Geist", system-ui, sans-serif;
   background: oklch(var(--bg));
   color: oklch(var(--fg));
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  font-feature-settings: "cv11", "ss01", "ss03";
   letter-spacing: 0;
 }
 
+#root {
+  min-height: 100%;
+}
+
 /* Density modes */
-.density-compact { --row-py: 8px;  --pad: 12px; --gap: 8px;  }
-.density-comfy   { --row-py: 12px; --pad: 16px; --gap: 12px; }
+.density-compact {
+  --row-py: 8px;
+  --pad: 12px;
+  --gap: 8px;
+}
+.density-comfy {
+  --row-py: 12px;
+  --pad: 16px;
+  --gap: 12px;
+}
 
 .focus-ring:focus-visible {
-  outline: 2px solid oklch(var(--ring) / 0.55);
-  outline-offset: 1px;
+  outline: 2px solid oklch(var(--ring) / 0.45);
+  outline-offset: 2px;
 }
 
 /* Thin scrollbars (light + dark aware) */
-.scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
-.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.scroll-thin::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
 .scroll-thin::-webkit-scrollbar-thumb {
   background: oklch(var(--border));
   border: 3px solid transparent;
@@ -91,25 +109,64 @@ body {
 }
 
 /* Motion */
-@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes fadeIn       { from { opacity: 0; }                 to { opacity: 1; } }
-@keyframes slideUp      { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-@keyframes shimmer      { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
-.anim-slide-r  { animation: slideInRight 240ms cubic-bezier(.2,.8,.2,1); }
-.anim-fade     { animation: fadeIn 200ms ease; }
-.anim-slide-up { animation: slideUp 200ms cubic-bezier(.2,.8,.2,1); }
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slideUp {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+.anim-slide-r {
+  animation: slideInRight 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.anim-fade {
+  animation: fadeIn 200ms ease;
+}
+.anim-slide-up {
+  animation: slideUp 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
-@keyframes caretBlink { 50% { opacity: 0; } }
-.caret { animation: caretBlink 1s step-end infinite; }
+@keyframes caretBlink {
+  50% {
+    opacity: 0;
+  }
+}
+.caret {
+  animation: caretBlink 1s step-end infinite;
+}
 
-::selection { background: oklch(var(--accent) / 0.25); }
+::selection {
+  background: oklch(var(--accent) / 0.25);
+}
 
-/*
-  Dark-mode compatibility layer.
-  Several feature screens intentionally use Tailwind's `bg-white` to keep the
-  light theme crisp. In dark mode those hard-coded white surfaces need to map
-  back onto the design tokens so every page shares the same depth model.
-*/
+/* Dark-mode compatibility for any legacy white utility surfaces. */
 .dark .bg-white {
   background-color: oklch(var(--card));
 }
@@ -147,15 +204,70 @@ body {
 }
 
 /* Soft elevation utilities — backed by CSS vars so they adapt to dark mode */
-.shadow-soft     { box-shadow: var(--shadow); }
-.shadow-soft-sm  { box-shadow: var(--shadow-sm); }
-.shadow-soft-lg  { box-shadow: var(--shadow-lg); }
+.shadow-soft {
+  box-shadow: var(--shadow);
+}
+.shadow-soft-sm {
+  box-shadow: var(--shadow-sm);
+}
+.shadow-soft-lg {
+  box-shadow: var(--shadow-lg);
+}
 
 /* Hairline border that adapts to theme */
-.hair { border-color: oklch(var(--border-soft)); }
+.hair {
+  border-color: oklch(var(--border-soft));
+}
+
+/* Design-system guardrails for legacy feature tabs that still use older utility mixes. */
+.bg-gradient-to-b,
+.bg-gradient-to-r,
+.bg-gradient-to-br {
+  background-image: none !important;
+}
+
+.rounded-2xl,
+.rounded-3xl {
+  border-radius: var(--radius) !important;
+}
+
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl {
+  box-shadow: var(--shadow) !important;
+}
+
+.border-border {
+  border-color: oklch(var(--border-soft)) !important;
+}
+
+.bg-elevated {
+  background-color: oklch(var(--card)) !important;
+}
+
+.from-muted\/25,
+.from-muted\/30,
+.to-bg {
+  --tw-gradient-from: oklch(var(--bg)) !important;
+  --tw-gradient-to: oklch(var(--bg)) !important;
+}
+
+/* Compact KPI grids used by older tabs should read like contextual counts, not dashboard cards. */
+.grid > .bg-card.border:has(.tabular-nums.leading-none),
+.grid > .bg-card.border-border-soft:has(.tabular-nums.leading-none) {
+  box-shadow: var(--shadow-sm);
+}
+
+@supports not selector(:has(*)) {
+  .grid > .bg-card.border {
+    box-shadow: var(--shadow-sm);
+  }
+}
 
 /* Numeric, mono-styled chip for things like KPIs and IDs */
 .chip-num {
-  font-feature-settings: 'tnum' on, 'cv11' on;
+  font-feature-settings:
+    "tnum" on,
+    "cv11" on;
   font-variant-numeric: tabular-nums;
 }
