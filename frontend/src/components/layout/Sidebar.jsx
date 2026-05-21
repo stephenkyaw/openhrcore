@@ -31,6 +31,11 @@ export function Sidebar({ route, onNav, open = true, onToggle }) {
       label: "Workspace",
       items: [
         {
+          id: "agent",
+          label: "Chat",
+          icon: <I.Sparkle size={14} />,
+        },
+        {
           id: "dashboard",
           label: "Dashboard",
           icon: <I.Dashboard size={14} />,

@@ -215,6 +215,18 @@ export const I = {
       <path d="M7 12h7" />
     </Icon>
   ),
+  Mic: (p) => (
+    <Icon {...p}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3M8 21h8" />
+    </Icon>
+  ),
+  Paperclip: (p) => (
+    <Icon {...p}>
+      <path d="M21 11.5l-8.5 8.5a6 6 0 0 1-8.5-8.5l8.5-8.5a4 4 0 0 1 5.7 5.7l-8.5 8.5a2 2 0 0 1-2.8-2.8l8-8" />
+    </Icon>
+  ),
   Spark: (p) => (
     <Icon {...p}>
       <path d="M12 3v6M12 15v6M3 12h6M15 12h6M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3" />

@@ -4,30 +4,81 @@ import { ATTENDANCE, CANDIDATES, JOBS, REC_STAGES } from "@/data/seed-extended";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const todayDate = () => new Date(`${TODAY}T00:00:00`);
+
+function monthBounds(date = todayDate()) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const start = new Date(year, month, 1).toISOString().slice(0, 10);
+  const end = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+  return { year, month, start, end };
+}
+
+function findEmployeeMention(ql) {
+  return EMPLOYEES.find((e) => {
+    const name = `${e.first} ${e.last}`.toLowerCase();
+    return (
+      ql.includes(name) ||
+      ql.includes(e.first.toLowerCase()) ||
+      ql.includes(e.last.toLowerCase()) ||
+      ql.includes(e.code.toLowerCase())
+    );
+  });
+}
+
+function tabFromQuery(ql) {
+  if (/lifecycle|life cycle|promotion|transfer|probation|contract|offboard|rehire/.test(ql)) {
+    return "lifecycle";
+  }
+  if (/leave|balance|holiday|time off/.test(ql)) return "leave";
+  if (/org|manager|reporting|direct report/.test(ql)) return "org";
+  if (/document|file|contract pdf|id copy/.test(ql)) return "documents";
+  if (/employment|job|role|position|manager/.test(ql)) return "employment";
+  return "profile";
+}
+
 // Canned intent resolution. Each intent matches against the user's query and
 // returns a plan/tool-call/run/reply/view shape that the panel replays as a
 // fake agent loop.
 export function resolveIntent(q) {
   const ql = q.toLowerCase();
+  const mentionedEmployee = findEmployeeMention(ql);
+
+  if (
+    mentionedEmployee &&
+    /open|show|view|profile|employee|lifecycle|life cycle|leave|org|employment|document/.test(ql)
+  ) {
+    const tab = tabFromQuery(ql);
+    return {
+      plan: `Resolve employee mention to ${mentionedEmployee.code}, then open the requested employee detail context.`,
+      tool: "employee.read",
+      args: { employee_id: mentionedEmployee.id, include: [tab] },
+      run: () => ({ count: 1, ms: 16 }),
+      reply: `${mentionedEmployee.first} ${mentionedEmployee.last} is ready. I can open ${tab === "profile" ? "the profile" : `the ${tab} tab`} from here.`,
+      view: {
+        kind: "employee-detail",
+        employee: mentionedEmployee,
+        tab,
+      },
+    };
+  }
 
   if (/probation/.test(ql)) {
-    const month = TODAY.getMonth();
-    const year = TODAY.getFullYear();
+    const { month, year, start, end } = monthBounds();
     const matches = EMPLOYEES.filter((e) => {
       if (!e.probation_end) return false;
       const d = new Date(e.probation_end);
       return d.getMonth() === month && d.getFullYear() === year;
     });
     return {
-      plan: "Filter employees where probation_end falls in May 2026, ordered by date.",
+      plan: `Filter employees where probation_end falls between ${start} and ${end}, ordered by date.`,
       tool: "employee.list",
       args: {
-        filters: { probation_end: { gte: "2026-05-01", lte: "2026-05-31" } },
+        filters: { probation_end: { gte: start, lte: end } },
         order: "probation_end asc",
       },
       run: () => ({ count: matches.length, ms: 38 }),
-      reply:
-        "4 employees have probation ending in May 2026. All four still need a confirmation review — Marcus and Priya are the deciding managers.",
+      reply: `${matches.length} employees have probation ending this month. Review the list and open Lifecycle when you need to record an outcome.`,
       view: {
         kind: "employee-list",
         rows: matches,
@@ -72,7 +123,7 @@ export function resolveIntent(q) {
         const rows = requests.filter(
           (r) =>
             r.status === "pending" &&
-            (TODAY - new Date(r.submitted)) / 86400000 >= 3,
+            (todayDate() - new Date(r.submitted)) / 86400000 >= 3,
         );
         return { count: rows.length, ms: 28, rows };
       },

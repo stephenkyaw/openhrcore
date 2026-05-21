@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { TODAY, addDays, fmt } from "@/lib/dates";
 import {
@@ -166,7 +166,7 @@ function LifecycleAction({ icon, title, sub, onClick, disabled, danger }) {
 }
 function PromoteDialog({ open, onClose, emp, apply }) {
   const [position, setPosition] = useState(emp.position);
-  const [effective, setEffective] = useState(fmt(addDays(fmt(TODAY), 14)));
+  const [effective, setEffective] = useState(addDays(TODAY, 14));
   const [oldComp] = useState(120000);
   const [newComp, setNewComp] = useState(138000);
   const [reason, setReason] = useState(
@@ -278,7 +278,7 @@ function PromoteDialog({ open, onClose, emp, apply }) {
 function TransferDialog({ open, onClose, emp, apply }) {
   const [dept, setDept] = useState(emp.dept);
   const [loc, setLoc] = useState(emp.loc);
-  const [effective, setEffective] = useState(fmt(addDays(fmt(TODAY), 14)));
+  const [effective, setEffective] = useState(addDays(TODAY, 14));
   const [reason, setReason] = useState("");
   return (
     <Dialog open={open} onClose={onClose} width={520}>
@@ -371,7 +371,7 @@ function TransferDialog({ open, onClose, emp, apply }) {
 }
 function ManagerDialog({ open, onClose, emp, apply }) {
   const [manager, setManager] = useState(emp.manager || "");
-  const [effective, setEffective] = useState(fmt(TODAY));
+  const [effective, setEffective] = useState(TODAY);
   return (
     <Dialog open={open} onClose={onClose} width={460}>
       {" "}
@@ -442,7 +442,7 @@ function ManagerDialog({ open, onClose, emp, apply }) {
 function CompDialog({ open, onClose, emp, apply }) {
   const [kind, setKind] = useState("raise");
   const [amount, setAmount] = useState(8000);
-  const [effective, setEffective] = useState(fmt(addDays(fmt(TODAY), 14)));
+  const [effective, setEffective] = useState(addDays(TODAY, 14));
   const [reason, setReason] = useState("");
   return (
     <Dialog open={open} onClose={onClose} width={520}>
@@ -531,7 +531,7 @@ function CompDialog({ open, onClose, emp, apply }) {
 }
 function ContractDialog({ open, onClose, emp, apply }) {
   const [contract, setContract] = useState(emp.contract);
-  const [effective, setEffective] = useState(fmt(TODAY));
+  const [effective, setEffective] = useState(TODAY);
   const [endDate, setEndDate] = useState("");
   return (
     <Dialog open={open} onClose={onClose} width={500}>
@@ -703,7 +703,7 @@ function ProbationDialog({ open, onClose, emp, apply }) {
 }
 function ExitDialog({ open, onClose, emp, apply }) {
   const [reason, setReason] = useState("resignation");
-  const [lastDay, setLastDay] = useState(fmt(addDays(fmt(TODAY), 30)));
+  const [lastDay, setLastDay] = useState(addDays(TODAY, 30));
   const [notes, setNotes] = useState("");
   return (
     <Dialog open={open} onClose={onClose} width={520}>
@@ -1039,7 +1039,7 @@ function Lifecycle({ emp }) {
                 {" "}
                 <b>Annual review cycle</b>{" "}
                 <div className="text-muted-fg">
-                  {addDays(fmt(TODAY), 165)} (in 165 days)
+                  {addDays(TODAY, 165)} (in 165 days)
                 </div>{" "}
               </div>{" "}
             </div>{" "}
@@ -1814,10 +1814,14 @@ function EmployeeList({ onNav }) {
     </PageShell>
   );
 }
-function EmployeeDetail({ id, onNav }) {
+function EmployeeDetail({ id, onNav, params }) {
   const { requests, balances } = useStore();
   const e = empById(id);
-  const [tab, setTab] = useState("profile");
+  const requestedTab = params?.tab;
+  const [tab, setTab] = useState(requestedTab || "profile");
+  useEffect(() => {
+    setTab(requestedTab || "profile");
+  }, [id, requestedTab]);
   if (!e) return <div className="px-7 py-6">Employee not found.</div>;
   const onProbation = e.probation_end && new Date(e.probation_end) > TODAY;
   const probDaysLeft = e.probation_end
@@ -1917,6 +1921,9 @@ function EmployeeDetail({ id, onNav }) {
       icon: I.Clock,
     },
   ];
+  const selectedTab = employeeTabs.some((item) => item.id === tab)
+    ? tab
+    : "profile";
   return (
     <PageShell
       className="overflow-hidden"
@@ -1971,13 +1978,13 @@ function EmployeeDetail({ id, onNav }) {
           />
         </div>
         <Tabs
-          value={tab}
+          value={selectedTab}
           onChange={setTab}
           items={employeeTabs}
           className="mb-5"
         />
         <section className="min-w-0">
-        {tab === "profile" && (
+        {selectedTab === "profile" && (
           <div className="grid grid-cols-12 gap-4">
             {" "}
             <Card className="col-span-12 xl:col-span-8">
@@ -2091,7 +2098,7 @@ function EmployeeDetail({ id, onNav }) {
             </div>{" "}
           </div>
         )}{" "}
-        {tab === "employment" && (
+        {selectedTab === "employment" && (
           <div className="grid grid-cols-12 gap-4">
             {" "}
             <Card className="col-span-12 xl:col-span-8">
@@ -2166,7 +2173,7 @@ function EmployeeDetail({ id, onNav }) {
             </Card>{" "}
           </div>
         )}{" "}
-        {tab === "leave" && (
+        {selectedTab === "leave" && (
           <Card>
             {" "}
             <CardHeader>
@@ -2237,7 +2244,7 @@ function EmployeeDetail({ id, onNav }) {
             </div>{" "}
           </Card>
         )}{" "}
-        {tab === "documents" && (
+        {selectedTab === "documents" && (
           <div className="grid grid-cols-2 gap-4">
             {" "}
             {[
@@ -2292,10 +2299,10 @@ function EmployeeDetail({ id, onNav }) {
             ))}{" "}
           </div>
         )}{" "}
-        {tab === "onboarding" && <Onboarding emp={e} />}{" "}
-        {tab === "offboarding" && <Offboarding />}{" "}
-        {tab === "lifecycle" && <Lifecycle emp={e} />}{" "}
-        {tab === "org" && (
+        {selectedTab === "onboarding" && <Onboarding emp={e} />}{" "}
+        {selectedTab === "offboarding" && <Offboarding />}{" "}
+        {selectedTab === "lifecycle" && <Lifecycle emp={e} />}{" "}
+        {selectedTab === "org" && (
           <Card>
             {" "}
             <CardHeader>
@@ -2328,7 +2335,7 @@ function EmployeeDetail({ id, onNav }) {
             </CardBody>{" "}
           </Card>
         )}{" "}
-        {tab === "history" && (
+        {selectedTab === "history" && (
           <Card>
             {" "}
             <CardHeader>
@@ -2381,6 +2388,6 @@ function EmployeeDetail({ id, onNav }) {
 }
 export function Employees({ params, onNav }) {
   const id = params?.id;
-  if (id) return <EmployeeDetail id={id} onNav={onNav} />;
+  if (id) return <EmployeeDetail id={id} params={params} onNav={onNav} />;
   return <EmployeeList onNav={onNav} />;
 }
